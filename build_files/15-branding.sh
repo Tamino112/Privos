@@ -16,12 +16,20 @@ render() { rsvg-convert -w "$2" -h "$3" "$1" -o "$4"; }
 install -Dm644 "${BRANDING}/privos-logo.svg" /usr/share/icons/hicolor/scalable/apps/privos-logo.svg
 install -Dm644 "${BRANDING}/privos-logo-symbolic.svg" \
     /usr/share/icons/hicolor/symbolic/apps/privos-logo-symbolic.svg
+ASSETS=/usr/share/privos/branding
+mkdir -p "${ASSETS}"
+for asset in privos-logo-boot.svg privos-logo-tile.svg privos-wordmark.svg privos-wordmark-inverse.svg; do
+    install -m644 "${BRANDING}/${asset}" "${ASSETS}/${asset}"
+done
 for size in 16 22 24 32 48 64 128 256 512; do
     mkdir -p "/usr/share/icons/hicolor/${size}x${size}/apps"
     render "${BRANDING}/privos-logo.svg" "${size}" "${size}" \
         "/usr/share/icons/hicolor/${size}x${size}/apps/privos-logo.png"
 done
 render "${BRANDING}/privos-logo.svg" 256 256 /usr/share/pixmaps/privos-logo.png
+render "${BRANDING}/privos-logo-tile.svg" 128 128 "${ASSETS}/privos-logo-tile.png"
+render "${BRANDING}/privos-wordmark.svg" 720 160 "${ASSETS}/privos-wordmark.png"
+render "${BRANDING}/privos-wordmark-inverse.svg" 720 160 "${ASSETS}/privos-wordmark-inverse.png"
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 
 # --- Wallpaper (hell + dunkel, Plasma wählt passend zum Farbschema) --------------------
@@ -37,14 +45,16 @@ sed -i 's|/usr/share/wallpapers/Fedora/|/usr/share/wallpapers/Privos/|g' /usr/li
 # --- Boot-Animation (Plymouth) ---------------------------------------------------------
 THEME=/usr/share/plymouth/themes/privos
 find /usr/share/plymouth/themes/spinner -name '*.png' ! -name 'watermark.png' -exec cp -t "${THEME}" {} +
-render "${BRANDING}/privos-logo.svg" 128 128 "${THEME}/watermark.png"
+rm -f "${THEME}"/throbber-*.png
+python3 "${BRANDING}/make-boot-spinner.py" "${THEME}"
+render "${BRANDING}/privos-logo-boot.svg" 128 128 "${THEME}/watermark.png"
 sed -i 's/^Theme=.*/Theme=privos/' /usr/share/plymouth/plymouthd.defaults
 
 # --- KDE-Design (Look-and-Feel "Privos") -----------------------------------------------
 LNF=/usr/share/plasma/look-and-feel/org.privos.desktop
 # Splash, Abmelde-Dialog und Setup-Skripte vom Fedora-Design übernehmen; eigene Dateien behalten
 cp -an /usr/share/plasma/look-and-feel/org.fedoraproject.fedoradark.desktop/contents/. "${LNF}/contents/"
-gzip -9n -c "${BRANDING}/privos-logo.svg" > "${LNF}/contents/splash/images/plasma.svgz"
+gzip -9n -c "${BRANDING}/privos-logo-boot.svg" > "${LNF}/contents/splash/images/plasma.svgz"
 rm -f "${LNF}"/contents/previews/*
 render "${BRANDING}/wallpaper-dark.svg" 640 360 "${LNF}/contents/previews/preview.png"
 render "${BRANDING}/wallpaper-dark.svg" 640 360 "${LNF}/contents/previews/splash.png"

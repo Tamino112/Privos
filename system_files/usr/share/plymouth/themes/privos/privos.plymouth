@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Privos
-Description=Privos-Bootanimation: Logo mit Ladeanimation auf schwarzem Grund
+Description=Privos-Bootanimation: helles Zeichen und dezenter Punktring auf dunklem Grund
 ModuleName=two-step
 
 [two-step]
@@ -20,7 +20,7 @@ TransitionDuration=0.0
 BackgroundStartColor=0x07080d
 BackgroundEndColor=0x07080d
 ProgressBarBackgroundColor=0x2a2d3a
-ProgressBarForegroundColor=0x8b5cf6
+ProgressBarForegroundColor=0x6757e5
 DialogClearsFirmwareBackground=true
 MessageBelowAnimation=true
 

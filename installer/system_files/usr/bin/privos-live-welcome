@@ -52,7 +52,8 @@ if (( mem_kb > 0 && mem_kb < 7500000 )); then
         --buttons-layout=center --on-top || true
 fi
 
-if yad --title="${TITLE}" --window-icon=privos-logo --image=privos-logo \
+if yad --title="${TITLE}" --window-icon=privos-logo \
+    --image=/usr/share/privos/branding/privos-logo-tile.png \
     --text="${TEXT}" --text-align=center --buttons-layout=center --on-top --fixed \
     --button="${TRY}:1" --button="${INSTALL}:0"; then
     liveinst &
