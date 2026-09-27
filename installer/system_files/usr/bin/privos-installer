@@ -1,0 +1,1266 @@
+#!/usr/bin/python3
+"""Privos-Installer: Installationsassistent für die Live-Sitzung.
+
+Sammelt Sprache, Tastatur, Zielfestplatte, Update-Wahl, Hintergrund und
+Benutzerkonto, erzeugt daraus eine Kickstart-Datei und führt die Installation
+über liveinst aus. Ohne Root/Rechte oder mit --simulate läuft ein simulierter
+Ablauf mit demselben Fortschrittsbildschirm.
+"""
+
+import json
+import locale
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import threading
+import unicodedata
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, GLib, Gtk
+
+
+GERMAN = (locale.getlocale()[0] or os.environ.get("LANG", "")).startswith("de")
+
+
+def t(de, en):
+    return de if GERMAN else en
+
+
+APP_ID = "org.privos.Installer"
+HELPER = "/usr/libexec/privos/privos-install-run"
+KS_PATH = "/tmp/privos-installer.ks"
+
+CSS = """
+.installer-rail {
+    background: alpha(currentColor, 0.03);
+    border-right: 1px solid alpha(currentColor, 0.08);
+}
+
+.rail-brand {
+    padding: 24px 20px 8px 20px;
+}
+
+.rail-brand-label {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.rail-brand-sub {
+    font-size: 11.5px;
+    color: alpha(currentColor, 0.5);
+}
+
+.step-row {
+    padding: 9px 16px;
+    margin: 2px 10px;
+    border-radius: 10px;
+    color: alpha(currentColor, 0.55);
+}
+
+.step-index {
+    min-width: 22px;
+    min-height: 22px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: alpha(currentColor, 0.08);
+    color: inherit;
+}
+
+.step-row.step-current {
+    background: alpha(@accent_bg_color, 0.12);
+    color: @accent_fg_color;
+}
+
+.step-row.step-current .step-index {
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+.step-row.step-done {
+    color: alpha(currentColor, 0.8);
+}
+
+.step-row.step-done .step-index {
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+.page-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.page-subtitle {
+    font-size: 13px;
+    color: alpha(currentColor, 0.55);
+    margin-top: 6px;
+}
+
+.page-head {
+    margin-bottom: 22px;
+}
+
+.nav-button {
+    min-height: 40px;
+    padding: 0 22px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.option-row {
+    border: 1px solid alpha(currentColor, 0.09);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    background: alpha(currentColor, 0.02);
+}
+
+.option-row.option-selected {
+    border-color: @accent_bg_color;
+    background: alpha(@accent_bg_color, 0.08);
+}
+
+.option-title {
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.option-sub {
+    font-size: 12px;
+    color: alpha(currentColor, 0.55);
+}
+
+.wallpaper-child {
+    border-radius: 14px;
+    padding: 4px;
+    border: 2px solid transparent;
+}
+
+.wallpaper-child.wallpaper-selected {
+    border-color: @accent_bg_color;
+}
+
+.wallpaper-preview {
+    border-radius: 11px;
+}
+
+.install-progress progress {
+    min-height: 8px;
+    border-radius: 999px;
+}
+
+.phase-label {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.phase-check {
+    font-size: 13px;
+    color: alpha(currentColor, 0.65);
+    padding: 5px 0;
+}
+
+.phase-check.phase-active {
+    color: @accent_fg_color;
+    font-weight: 600;
+}
+
+.phase-check.phase-finished {
+    color: alpha(currentColor, 0.85);
+}
+
+.log-view {
+    font-size: 11px;
+    padding: 10px;
+    color: alpha(currentColor, 0.55);
+    background: alpha(currentColor, 0.04);
+    border-radius: 12px;
+}
+
+.percent-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: alpha(currentColor, 0.7);
+    font-variant-numeric: tabular-nums;
+}
+"""
+
+STEPS = [
+    ("language", "Sprache & Tastatur", "Language & keyboard"),
+    ("disk", "Festplatte", "Disk"),
+    ("updates", "Aktualisierungen", "Updates"),
+    ("wallpaper", "Erscheinungsbild", "Appearance"),
+    ("account", "Benutzerkonto", "User account"),
+    ("summary", "Übersicht", "Summary"),
+]
+
+LANGS = [
+    ("de_DE.UTF-8", "Deutsch", "German"),
+    ("en_US.UTF-8", "English (US)", "English (US)"),
+    ("en_GB.UTF-8", "English (UK)", "English (UK)"),
+    ("fr_FR.UTF-8", "Français", "French"),
+    ("es_ES.UTF-8", "Español", "Spanish"),
+    ("it_IT.UTF-8", "Italiano", "Italian"),
+    ("pt_BR.UTF-8", "Português (Brasil)", "Portuguese (Brazil)"),
+    ("pl_PL.UTF-8", "Polski", "Polish"),
+    ("nl_NL.UTF-8", "Nederlands", "Dutch"),
+    ("tr_TR.UTF-8", "Türkçe", "Turkish"),
+    ("uk_UA.UTF-8", "Українська", "Ukrainian"),
+    ("ru_RU.UTF-8", "Русский", "Russian"),
+    ("ja_JP.UTF-8", "日本語", "Japanese"),
+    ("ko_KR.UTF-8", "한국어", "Korean"),
+]
+
+LANG_TIMEZONES = {
+    "de_DE": "Europe/Berlin",
+    "en_US": "America/New_York",
+    "en_GB": "Europe/London",
+    "fr_FR": "Europe/Paris",
+    "es_ES": "Europe/Madrid",
+    "it_IT": "Europe/Rome",
+    "pt_BR": "America/Sao_Paulo",
+    "pl_PL": "Europe/Warsaw",
+    "nl_NL": "Europe/Amsterdam",
+    "tr_TR": "Europe/Istanbul",
+    "uk_UA": "Europe/Kyiv",
+    "ru_RU": "Europe/Moscow",
+    "ja_JP": "Asia/Tokyo",
+    "ko_KR": "Asia/Seoul",
+}
+
+KEYMAPS = [
+    ("de", "Deutsch"),
+    ("us", "English (US)"),
+    ("gb", "English (UK)"),
+    ("fr", "Français (AZERTY)"),
+    ("es", "Español"),
+    ("it", "Italiano"),
+    ("br", "Português (Brasil)"),
+    ("pl", "Polski (QWERTZ)"),
+    ("nl", "Nederlands"),
+    ("tr", "Türkçe (Q)"),
+    ("ua", "Українська"),
+    ("ru", "Русская"),
+    ("jp", "日本語"),
+]
+
+WALLPAPERS = [
+    ("default", "Privos", "Privos",
+     "/usr/share/backgrounds/privos/privos-default.png", "prefer-dark"),
+    ("dark", "Dunkel", "Dark",
+     "/usr/share/backgrounds/privos/privos-dark.png", "prefer-dark"),
+    ("light", "Hell", "Light",
+     "/usr/share/backgrounds/privos/privos-light.png", "prefer-light"),
+]
+
+PHASES = [
+    ("partition", "Festplatte wird partitioniert", "Partitioning the disk"),
+    ("copy", "System wird kopiert", "Copying the system"),
+    ("bootloader", "Bootloader wird eingerichtet", "Setting up the bootloader"),
+    ("account", "Benutzerkonto wird eingerichtet", "Creating the user account"),
+    ("updates", "Aktualisierungen werden installiert", "Installing updates"),
+    ("finish", "Fast fertig", "Finishing up"),
+]
+PHASE_INDEX = {key: i for i, (key, _de, _en) in enumerate(PHASES)}
+
+USER_RE = re.compile(r"^[a-z_][a-z0-9_-]*$")
+HOST_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]*$")
+
+
+def human_size(num_bytes):
+    gib = num_bytes / 2**30
+    if gib >= 1:
+        return t(f"{gib:,.1f} GB".replace(",", "X").replace(".", ",").replace("X", "."),
+                 f"{gib:.1f} GB")
+    return f"{num_bytes / 2**20:.0f} MB"
+
+
+def derive_username(fullname):
+    ascii_name = unicodedata.normalize("NFKD", fullname).encode("ascii", "ignore").decode()
+    parts = [p for p in re.split(r"[^a-z0-9]+", ascii_name.lower()) if p]
+    if not parts:
+        return ""
+    return parts[0] if len(parts) == 1 else parts[0]
+
+
+def list_disks():
+    try:
+        out = subprocess.run(
+            ["lsblk", "-d", "-b", "-J", "-o", "NAME,MODEL,SIZE,TYPE,RM"],
+            capture_output=True, text=True, timeout=10)
+        data = json.loads(out.stdout)
+        disks = []
+        for dev in data.get("blockdevices", []):
+            if dev.get("type") != "disk":
+                continue
+            model = (dev.get("model") or "").strip() or t("Keine Angabe", "No model info")
+            disks.append((dev["name"], model, int(dev.get("size") or 0),
+                          bool(dev.get("rm"))))
+        return disks
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+
+
+class InstallConfig:
+    def __init__(self):
+        self.lang = "de_DE.UTF-8" if GERMAN else "en_US.UTF-8"
+        self.keymap = "de" if GERMAN else "us"
+        self.disk = None
+        self.updates = True
+        self.wallpaper = "default"
+        self.fullname = ""
+        self.username = ""
+        self.hostname = "privos"
+        self.password = ""
+
+    def kickstart(self):
+        lang_short = self.lang.split(".")[0]
+        timezone = LANG_TIMEZONES.get(lang_short, "UTC")
+        wallpaper = next(w for w in WALLPAPERS if w[0] == self.wallpaper)
+        wall_uri = f"file://{wallpaper[3]}"
+        lines = [
+            f"lang {self.lang}",
+            f"keyboard {self.keymap}",
+            f"timezone {timezone} --utc",
+            f"hostname {self.hostname}",
+            f"clearpart --all --initlabel --drives={self.disk}",
+            "autopart --type btrfs",
+            f"user --name={self.username} --password={self.password} "
+            f"--groups=wheel --gecos=\"{self.fullname or self.username}\"",
+            "rootpw --lock",
+            "bootloader --timeout=5",
+            "",
+            "%post --erroronfail --log=/tmp/privos-wallpaper.log",
+            "mkdir -p /etc/dconf/db/local.d",
+            "cat > /etc/dconf/db/local.d/00-privos-defaults <<'EOF'",
+            "[org/gnome/desktop/background]",
+            f"picture-uri='{wall_uri}'",
+            f"picture-uri-dark='{wall_uri}'",
+            "picture-options='zoom'",
+            "[org/gnome/desktop/interface]",
+            f"color-scheme='{wallpaper[4]}'",
+            "accent-color='teal'",
+            "EOF",
+            "dconf update",
+            "%end",
+        ]
+        if self.updates:
+            lines += [
+                "",
+                "%post --erroronfail --log=/tmp/privos-updates.log",
+                "bootc upgrade || true",
+                "%end",
+            ]
+        return "\n".join(lines) + "\n"
+
+    def write_kickstart(self, path):
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(self.kickstart())
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+
+class SimulatedBackend:
+    """Vorführ-Ablauf: gleiche Ereignisse wie das echte Backend, ohne zu installieren."""
+
+    def __init__(self):
+        self._cancelling = False
+        self._source = None
+        self.proc = None
+
+    def cancel(self):
+        self._cancelling = True
+        if self._source:
+            self._source.remove()
+
+    def start(self, _config, on_phase, on_progress, on_log, on_done):
+        logs = {
+            "partition": ["Erstelle GPT-Partitionstabelle",
+                          "Lege Systempartition an (Btrfs)"],
+            "copy": ["Kopiere 2.4 GB des Privos-Images",
+                     "Verifiziere Dateisystem-Prüfsummen",
+                     "Richte Btrfs-Subvolumes ein"],
+            "bootloader": ["Installiere GRUB (shimx64.efi)",
+                           "Schreibe Boot-Konfiguration"],
+            "account": ["Erstelle Benutzer und setzt Rechte",
+                        "Hinterlege Standard-Einstellungen"],
+            "updates": ["Prüfe Privos-Registry auf Aktualisierungen"],
+            "finish": ["Setze SELinux-Kontexte",
+                       "Erstelle Initramfs"],
+        }
+
+        state = {"phase": -1, "progress": 0.0}
+
+        def advance():
+            if self._cancelling:
+                on_done(False, t("Installation abgebrochen.", "Installation cancelled."))
+                return GLib.SOURCE_REMOVE
+            if state["phase"] >= 0:
+                on_progress(min(1.0, state["progress"]))
+            state["progress"] += 0.006
+            if state["phase"] < len(PHASES) - 1 and state["progress"] > (state["phase"] + 1) / len(PHASES):
+                state["phase"] += 1
+                key = PHASES[state["phase"]][0]
+                on_phase(key)
+                for line in logs[key]:
+                    on_log(line)
+            if state["progress"] >= 1.0:
+                on_phase("finish")
+                on_progress(1.0)
+                on_done(True, "")
+                return GLib.SOURCE_REMOVE
+            return GLib.SOURCE_CONTINUE
+
+        self._source = GLib.timeout_add(60, advance)
+
+
+class LiveBackend:
+    """Echte Installation: Kickstart schreiben, Helper per pkexec starten, Ausgarten parsen."""
+
+    def __init__(self):
+        self.proc = None
+
+    def cancel(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+
+    def start(self, config, on_phase, on_progress, on_log, on_done):
+        try:
+            config.write_kickstart(KS_PATH)
+        except OSError as error:
+            on_done(False, str(error))
+            return
+
+        if os.path.isfile(HELPER) and shutil.which("pkexec"):
+            argv = ["pkexec", HELPER, KS_PATH]
+        elif os.path.isfile(HELPER):
+            argv = [HELPER, KS_PATH]
+        else:
+            on_done(False, t("Installations-Helfer nicht gefunden.", "Install helper not found."))
+            return
+
+        def worker():
+            last_marker = [0.0]
+
+            def creep():
+                # Kein Fortschritt vom Helfer? Dann zumindest langsam weiterkriechen.
+                if self.proc and self.proc.poll() is None and \
+                        GLib.get_monotonic_time() - last_marker[0] > 5_000_000:
+                    on_progress(-1.0)  # -1 = unbestimmter Zuwachs
+                return GLib.SOURCE_CONTINUE
+
+            def emit(func, *args):
+                GLib.idle_add(func, *args)
+
+            try:
+                self.proc = subprocess.Popen(
+                    argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, errors="replace", bufsize=1)
+            except OSError as error:
+                emit(on_done, False, str(error))
+                return
+
+            creep_source = GLib.timeout_add(500, creep)
+            assert self.proc.stdout is not None
+            for line in self.proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                emit(on_log, line)
+                if line.startswith("[PRIVOS] phase:"):
+                    key = line.split(":", 1)[1].strip()
+                    if key in PHASE_INDEX:
+                        last_marker[0] = GLib.get_monotonic_time()
+                        emit(on_phase, key)
+                elif line.startswith("[PRIVOS] progress:"):
+                    try:
+                        value = float(line.split(":", 1)[1].strip())
+                        last_marker[0] = GLib.get_monotonic_time()
+                        emit(on_progress, min(1.0, value / 100.0))
+                    except ValueError:
+                        pass
+            returncode = self.proc.wait()
+            GLib.source_remove(creep_source)
+            if returncode == 0:
+                emit(on_progress, 1.0)
+                emit(on_phase, "finish")
+                emit(on_done, True, "")
+            else:
+                emit(on_done, False, t(
+                    f"Installation fehlgeschlagen (Fehler {returncode}). "
+                    "Details stehen im Protokoll.",
+                    f"Installation failed (error {returncode}). See the log."))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+class Installer(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
+        self.config = InstallConfig()
+        self.step = 0
+        self.furthest = 0
+        self.installing = False
+        self._disks = []
+        self._account_valid = False
+        self._wallpaper_flow = None
+        self._wallpaper_children = {}
+
+    def do_activate(self):
+        window = self.props.active_window
+        if window:
+            window.present()
+            return
+
+        window = Adw.ApplicationWindow(application=self)
+        window.set_title(t("Privos installieren", "Install Privos"))
+        window.set_default_size(920, 640)
+        window.set_size_request(880, 600)
+        self.window = window
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS, -1)
+        Gtk.StyleContext.add_provider_for_display(
+            window.get_display(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.root = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        window.set_content(self.root)
+
+        self._build_rail()
+        self._build_main()
+        self._build_progress()
+        self.root.append(self.rail)
+        self.root.append(self.main_box)
+
+        self._update_nav()
+        window.present()
+
+    # ------------------------------------------------------------------ Rail
+    def _build_rail(self):
+        self.rail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.rail.set_size_request(250, -1)
+        self.rail.add_css_class("installer-rail")
+
+        brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        brand.add_css_class("rail-brand")
+        logo = Gtk.Image.new_from_icon_name("privos-logo")
+        logo.set_pixel_size(36)
+        brand.append(logo)
+        brand_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        name = Gtk.Label(label="Privos")
+        name.set_xalign(0)
+        name.add_css_class("rail-brand-label")
+        brand_text.append(name)
+        sub = Gtk.Label(label=t("Installer", "Installer"))
+        sub.set_xalign(0)
+        sub.add_css_class("rail-brand-sub")
+        brand_text.append(sub)
+        brand.append(brand_text)
+        self.rail.append(brand)
+
+        self.step_list = Gtk.ListBox()
+        self.step_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.step_list.add_css_class("navigation-sidebar")
+        self.step_rows = []
+        for index, (key, de, en) in enumerate(STEPS):
+            row = Gtk.ListBoxRow()
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            box.add_css_class("step-row")
+            index_label = Gtk.Label(label=str(index + 1))
+            index_label.add_css_class("step-index")
+            box.append(index_label)
+            label = Gtk.Label(label=t(de, en))
+            label.set_xalign(0)
+            label.set_hexpand(True)
+            box.append(label)
+            row.set_child(box)
+            row.key = key
+            row.box = box
+            row.index_label = index_label
+            row.connect("activate", self._on_step_activated)
+            self.step_list.append(row)
+            self.step_rows.append(row)
+        self.rail.append(self.step_list)
+
+        version = Gtk.Label(label="Privos · Linux")
+        version.add_css_class("rail-brand-sub")
+        version.set_valign(Gtk.Align.END)
+        version.set_vexpand(True)
+        version.set_margin_bottom(16)
+        self.rail.append(version)
+
+    def _on_step_activated(self, row):
+        if self.installing:
+            return
+        if row.index <= self.furthest:
+            self.step = row.index
+            self._update_nav()
+
+    def _sync_rail(self):
+        for index, row in enumerate(self.step_rows):
+            row.box.remove_css_class("step-current")
+            row.box.remove_css_class("step-done")
+            if index < self.step:
+                row.box.add_css_class("step-done")
+                row.index_label.set_label("✓")
+            elif index == self.step:
+                row.box.add_css_class("step-current")
+                row.index_label.set_label(str(index + 1))
+            else:
+                row.index_label.set_label(str(index + 1))
+
+    # ------------------------------------------------------------------ Seiten
+    def _build_main(self):
+        self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.main_box.set_hexpand(True)
+
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_margin_top(32)
+        self.stack.set_margin_bottom(16)
+        self.stack.set_margin_start(40)
+        self.stack.set_margin_end(40)
+        self.stack.set_vexpand(True)
+        self.main_box.append(self.stack)
+
+        self.stack.add_named(self._page_language(), "language")
+        self.stack.add_named(self._page_disk(), "disk")
+        self.stack.add_named(self._page_updates(), "updates")
+        self.stack.add_named(self._page_wallpaper(), "wallpaper")
+        self.stack.add_named(self._page_account(), "account")
+        self.stack.add_named(self._page_summary(), "summary")
+
+        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        self.main_box.append(separator)
+
+        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        bottom.set_margin_top(14)
+        bottom.set_margin_bottom(16)
+        bottom.set_margin_start(40)
+        bottom.set_margin_end(40)
+        self.back_button = Gtk.Button(label=t("Zurück", "Back"))
+        self.back_button.add_css_class("flat")
+        self.back_button.add_css_class("nav-button")
+        self.back_button.connect("clicked", self._go_back)
+        bottom.append(self.back_button)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        bottom.append(spacer)
+        self.forward_button = Gtk.Button(label=t("Weiter", "Continue"))
+        self.forward_button.add_css_class("suggested-action")
+        self.forward_button.add_css_class("nav-button")
+        self.forward_button.connect("clicked", self._go_forward)
+        bottom.append(self.forward_button)
+        self.main_box.append(bottom)
+
+    def _page_head(self, title, subtitle):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.add_css_class("page-head")
+        label = Gtk.Label(label=title)
+        label.set_xalign(0)
+        label.add_css_class("page-title")
+        box.append(label)
+        sub = Gtk.Label(label=subtitle)
+        sub.set_xalign(0)
+        sub.set_wrap(True)
+        sub.add_css_class("page-subtitle")
+        box.append(sub)
+        return box
+
+    def _option_row(self, title, subtitle):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.add_css_class("option-row")
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        text.set_hexpand(True)
+        title_label = Gtk.Label(label=title)
+        title_label.set_xalign(0)
+        title_label.add_css_class("option-title")
+        text.append(title_label)
+        if subtitle:
+            sub_label = Gtk.Label(label=subtitle)
+            sub_label.set_xalign(0)
+            sub_label.add_css_class("option-sub")
+            text.append(sub_label)
+        row.append(text)
+        return row
+
+    def _scrolled(self, child, height):
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_size_request(-1, height)
+        scrolled.set_child(child)
+        return scrolled
+
+    def _page_language(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Sprache & Tastatur wählen", "Choose language & keyboard"),
+            t("Diese Einstellungen gelten für die Installation und das neue System.",
+              "These settings apply to the installation and the new system.")))
+
+        lang_label = Gtk.Label(label=t("Sprache", "Language"))
+        lang_label.set_xalign(0)
+        lang_label.add_css_class("option-sub")
+        page.append(lang_label)
+        self.lang_list = Gtk.ListBox()
+        self.lang_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.lang_rows = {}
+        for code, native, english in LANGS:
+            row = Gtk.ListBoxRow()
+            box = self._option_row(native, None if native == english else english)
+            row.set_child(box)
+            row.lang = code
+            self.lang_list.append(row)
+            self.lang_rows[code] = row
+        self.lang_list.select_row(self.lang_rows.get(self.config.lang, next(iter(self.lang_rows.values()))))
+        self.lang_list.connect("row-selected", self._on_language_selected)
+        page.append(self._scrolled(self.lang_list, 200))
+
+        key_label = Gtk.Label(label=t("Tastaturbelegung", "Keyboard layout"))
+        key_label.set_xalign(0)
+        key_label.add_css_class("option-sub")
+        key_label.set_margin_top(14)
+        page.append(key_label)
+        self.key_list = Gtk.ListBox()
+        self.key_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.key_rows = {}
+        for layout, label_text in KEYMAPS:
+            row = Gtk.ListBoxRow()
+            row.set_child(self._option_row(label_text, None))
+            row.layout = layout
+            self.key_list.append(row)
+            self.key_rows[layout] = row
+        self.key_list.select_row(self.key_rows.get(self.config.keymap, next(iter(self.key_rows.values()))))
+        self.key_list.connect("row-selected", self._on_keymap_selected)
+        page.append(self._scrolled(self.key_list, 160))
+        return page
+
+    def _on_language_selected(self, _list, row):
+        if row:
+            self.config.lang = row.lang
+            self._refresh_summary()
+
+    def _on_keymap_selected(self, _list, row):
+        if row:
+            self.config.keymap = row.layout
+
+    def _page_disk(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Zielfestplatte wählen", "Choose the target disk"),
+            t("Die ausgewählte Festplatte wird vollständig gelöscht.",
+              "The selected disk will be erased completely.")))
+
+        self.disk_list = Gtk.ListBox()
+        self.disk_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.disk_list.connect("row-selected", self._on_disk_selected)
+        self._disks = list_disks()
+        self.disk_rows = {}
+        for name, model, size, removable in self._disks:
+            row = Gtk.ListBoxRow()
+            box = self._option_row(
+                f"/dev/{name}",
+                f"{model} · {human_size(size)}"
+                + (" · " + t("Wechseldatenträger", "Removable") if removable else ""))
+            row.set_child(box)
+            row.disk = name
+            self.disk_list.append(row)
+            self.disk_rows[name] = row
+        page.append(self._scrolled(self.disk_list, 260))
+
+        if not self._disks:
+            empty = Gtk.Label(label=t(
+                "Keine Festplatten gefunden.", "No disks found."))
+            empty.add_css_class("option-sub")
+            page.append(empty)
+        elif self.config.disk is None:
+            self.disk_list.select_row(next(iter(self.disk_rows.values())))
+
+        self.disk_warning = Gtk.Label(label=t(
+            "Warnung: Alle Daten auf der gewählten Festplatte gehen verloren.",
+            "Warning: all data on the selected disk will be lost."))
+        self.disk_warning.set_xalign(0)
+        self.disk_warning.set_margin_top(12)
+        self.disk_warning.add_css_class("warning")
+        page.append(self.disk_warning)
+        return page
+
+    def _on_disk_selected(self, _list, row):
+        if row:
+            self.config.disk = row.disk
+            self._refresh_summary()
+
+    def _page_updates(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Aktualisierungen", "Updates"),
+            t("Entscheide, ob das System direkt auf den neuesten Stand gebracht wird.",
+              "Decide whether the system is brought up to date right away.")))
+
+        group = Adw.PreferencesGroup()
+        self.updates_row = Adw.SwitchRow(
+            title=t("Aktualisierungen während der Installation installieren",
+                    "Install updates during installation"),
+            subtitle=t("Empfohlen – das neue System startet aktuell.",
+                       "Recommended – the new system starts up to date."))
+        self.updates_row.set_active(self.config.updates)
+        self.updates_row.connect("notify::active", self._on_updates_toggled)
+        group.add(self.updates_row)
+        page.append(group)
+
+        note = Gtk.Label(label=t(
+            "Ohne Internetverbindung werden Aktualisierungen automatisch übersprungen.",
+            "Without an internet connection, updates are skipped automatically."))
+        note.set_xalign(0)
+        note.set_margin_top(14)
+        note.set_wrap(True)
+        note.add_css_class("option-sub")
+        page.append(note)
+        return page
+
+    def _on_updates_toggled(self, row, _param):
+        self.config.updates = row.get_active()
+        self._refresh_summary()
+
+    def _page_wallpaper(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Erscheinungsbild wählen", "Choose your look"),
+            t("Der Hintergrund wird auch direkt in dieser Live-Sitzung übernommen.",
+              "The wallpaper is applied to this live session right away.")))
+
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_max_children_per_line(3)
+        flow.set_homogeneous(True)
+        flow.set_row_spacing(12)
+        flow.set_column_spacing(12)
+        self._wallpaper_children = {}
+        for key, de, en, path, _scheme in WALLPAPERS:
+            child = Gtk.FlowBoxChild()
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.add_css_class("wallpaper-child")
+            picture = Gtk.Picture(filename=path)
+            picture.set_size_request(200, 126)
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.add_css_class("wallpaper-preview")
+            box.append(picture)
+            label = Gtk.Label(label=t(de, en))
+            label.add_css_class("option-sub")
+            box.append(label)
+            child.set_child(box)
+            child.wallpaper = key
+            child.box = box
+            gesture = Gtk.GestureClick()
+            gesture.connect("pressed", self._on_wallpaper_clicked, key)
+            child.add_controller(gesture)
+            flow.append(child)
+            self._wallpaper_children[key] = child
+        self._wallpaper_flow = flow
+        page.append(flow)
+        self._mark_wallpaper(self.config.wallpaper)
+        return page
+
+    def _on_wallpaper_clicked(self, _gesture, _n, _x, _y, key):
+        self.config.wallpaper = key
+        self._mark_wallpaper(key)
+        self._apply_wallpaper_live(key)
+        self._refresh_summary()
+
+    def _mark_wallpaper(self, key):
+        for child_key, child in self._wallpaper_children.items():
+            child.box.remove_css_class("wallpaper-selected")
+            if child_key == key:
+                child.box.add_css_class("wallpaper-selected")
+
+    def _apply_wallpaper_live(self, key):
+        wallpaper = next(w for w in WALLPAPERS if w[0] == key)
+        uri = f"file://{wallpaper[3]}"
+        for schema_key in ("picture-uri", "picture-uri-dark"):
+            try:
+                subprocess.run(
+                    ["gsettings", "set", "org.gnome.desktop.background",
+                     schema_key, uri],
+                    timeout=5, capture_output=True)
+            except OSError:
+                pass
+
+    def _page_account(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Benutzerkonto erstellen", "Create your account"),
+            t("Dieses Konto wird beim ersten Start eingerichtet.",
+              "This account is set up on first boot.")))
+
+        group = Adw.PreferencesGroup()
+        self.fullname_row = Adw.EntryRow(title=t("Vollständiger Name", "Full name"))
+        self.fullname_row.connect("changed", self._on_account_changed)
+        group.add(self.fullname_row)
+
+        self.username_row = Adw.EntryRow(title=t("Benutzername", "Username"))
+        self.username_row.connect("changed", self._on_account_changed)
+        group.add(self.username_row)
+
+        self.password_row = Adw.PasswordEntryRow(title=t("Passwort", "Password"))
+        self.password_row.set_show_peek_icon(True)
+        self.password_row.connect("changed", self._on_account_changed)
+        group.add(self.password_row)
+
+        self.password2_row = Adw.PasswordEntryRow(title=t("Passwort bestätigen", "Confirm password"))
+        self.password2_row.set_show_peek_icon(True)
+        self.password2_row.connect("changed", self._on_account_changed)
+        group.add(self.password2_row)
+
+        self.hostname_row = Adw.EntryRow(title=t("Rechnername", "Computer name"))
+        self.hostname_row.set_text(self.config.hostname)
+        self.hostname_row.connect("changed", self._on_account_changed)
+        group.add(self.hostname_row)
+        page.append(group)
+
+        self.account_error = Gtk.Label(label="")
+        self.account_error.set_xalign(0)
+        self.account_error.set_margin_top(14)
+        self.account_error.set_wrap(True)
+        self.account_error.add_css_class("warning")
+        page.append(self.account_error)
+        return page
+
+    def _on_account_changed(self, *_args):
+        fullname = self.fullname_row.get_text().strip()
+        username = self.username_row.get_text().strip().lower()
+        if self.fullname_row.has_focus() or not self.username_row.get_text():
+            derived = derive_username(fullname)
+            if derived and username != derived:
+                self.username_row.set_text(derived)
+                username = derived
+
+        password = self.password_row.get_text()
+        password2 = self.password2_row.get_text()
+        hostname = self.hostname_row.get_text().strip()
+
+        error = ""
+        if username and not USER_RE.match(username):
+            error = t("Der Benutzername darf nur Kleinbuchstaben, Zahlen, - und _ enthalten.",
+                      "The username may only contain lowercase letters, digits, - and _.")
+        elif len(password) > 0 and len(password) < 6:
+            error = t("Das Passwort muss mindestens 6 Zeichen lang sein.",
+                      "The password must be at least 6 characters.")
+        elif password2 and password != password2:
+            error = t("Die Passwörter stimmen nicht überein.", "Passwords do not match.")
+        elif hostname and not HOST_RE.match(hostname):
+            error = t("Der Rechnername enthält ungültige Zeichen.", "Invalid computer name.")
+
+        self._account_valid = bool(username) and len(password) >= 6 \
+            and password == password2 and HOST_RE.match(hostname or "privos")
+        if self._account_valid:
+            self.config.fullname = fullname
+            self.config.username = username
+            self.config.hostname = hostname or "privos"
+            self.config.password = password
+        self.account_error.set_label(error)
+        self._update_nav()
+
+    def _page_summary(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.append(self._page_head(
+            t("Bereit zur Installation", "Ready to install"),
+            t("Prüfe die Auswahl – danach beginnt die Installation.",
+              "Review your choices – the installation starts afterwards.")))
+        self.summary_group = Adw.PreferencesGroup()
+        page.append(self.summary_group)
+        self.summary_warning = Gtk.Label(label="")
+        self.summary_warning.set_xalign(0)
+        self.summary_warning.set_margin_top(14)
+        self.summary_warning.set_wrap(True)
+        self.summary_warning.add_css_class("warning")
+        page.append(self.summary_warning)
+        self._refresh_summary()
+        return page
+
+    def _refresh_summary(self):
+        if not hasattr(self, "summary_group"):
+            return
+        for row in getattr(self, "_summary_rows", []):
+            self.summary_group.remove(row)
+        self._summary_rows = []
+        lang_name = next((n for c, n, _e in LANGS if c == self.config.lang), self.config.lang)
+        key_name = next((n for _l, n in KEYMAPS if _l == self.config.keymap), self.config.keymap)
+        wall_name = next(t(w[1], w[2]) for w in WALLPAPERS if w[0] == self.config.wallpaper)
+
+        rows = [
+            (t("Sprache", "Language"), lang_name),
+            (t("Tastatur", "Keyboard"), key_name),
+        ]
+        if self.config.disk:
+            disk = next((d for d in self._disks if d[0] == self.config.disk), None)
+            detail = f"/dev/{self.config.disk}"
+            if disk:
+                detail += f" · {disk[1]} · {human_size(disk[2])}"
+            rows.append((t("Festplatte", "Disk"), detail))
+        rows.append((t("Aktualisierungen", "Updates"),
+                     t("Ja", "Yes") if self.config.updates else t("Nein", "No")))
+        rows.append((t("Hintergrund", "Wallpaper"), wall_name))
+        if self._account_valid:
+            rows.append((t("Benutzer", "User"),
+                         f"{self.config.username} · {self.config.hostname}"))
+
+        for title, value in rows:
+            row = Adw.ActionRow(title=title)
+            label = Gtk.Label(label=value)
+            label.add_css_class("option-sub")
+            row.add_suffix(label)
+            self.summary_group.add(row)
+            self._summary_rows.append(row)
+
+        warnings = []
+        if not os.path.isdir("/sys/firmware/efi"):
+            warnings.append(t(
+                "Legacy-Boot erkannt – Privos startet nur im UEFI-Modus.",
+                "Legacy boot detected – Privos only boots in UEFI mode."))
+        small = next((d for d in self._disks if d[0] == self.config.disk and d[2] < 25 * 2**30), None)
+        if small:
+            warnings.append(t(
+                "Die gewählte Festplatte ist kleiner als 25 GB.",
+                "The selected disk is smaller than 25 GB."))
+        self.summary_warning.set_label("\n".join(warnings))
+
+    # ------------------------------------------------------------------ Navigation
+    def _go_back(self, *_args):
+        if self.step > 0:
+            self.step -= 1
+            self._update_nav()
+
+    def _go_forward(self, *_args):
+        if self.step == len(STEPS) - 1:
+            self._start_install()
+            return
+        self.step = min(len(STEPS) - 1, self.step + 1)
+        self.furthest = max(self.furthest, self.step)
+        self._update_nav()
+
+    def _can_proceed(self):
+        key = STEPS[self.step][0]
+        if key == "disk":
+            return self.config.disk is not None
+        if key == "account":
+            return self._account_valid
+        return True
+
+    def _update_nav(self):
+        self.stack.set_visible_child_name(STEPS[self.step][0])
+        self._sync_rail()
+        self.back_button.set_sensitive(self.step > 0 and not self.installing)
+        is_last = self.step == len(STEPS) - 1
+        self.forward_button.set_label(
+            t("Installation starten", "Start installation") if is_last else t("Weiter", "Continue"))
+        self.forward_button.set_sensitive(self._can_proceed() and not self.installing)
+
+    # ------------------------------------------------------------------ Installation
+    def _build_progress(self):
+        self.progress_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.progress_page.set_hexpand(True)
+        self.progress_page.set_margin_top(48)
+        self.progress_page.set_margin_bottom(24)
+        self.progress_page.set_margin_start(56)
+        self.progress_page.set_margin_end(56)
+
+        self.phase_title = Gtk.Label(label=t("Installation wird vorbereitet…", "Preparing installation…"))
+        self.phase_title.add_css_class("phase-label")
+        self.progress_page.append(self.phase_title)
+
+        bar_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        bar_row.set_margin_top(16)
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_bar.set_hexpand(True)
+        self.progress_bar.set_show_text(False)
+        self.progress_bar.add_css_class("install-progress")
+        bar_row.append(self.progress_bar)
+        self.percent_label = Gtk.Label(label="0 %")
+        self.percent_label.add_css_class("percent-label")
+        bar_row.append(self.percent_label)
+        self.progress_page.append(bar_row)
+
+        self.phase_rows = []
+        phases_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        phases_box.set_margin_top(22)
+        for key, de, en in PHASES:
+            label = Gtk.Label(label=t(de, en))
+            label.set_xalign(0)
+            label.add_css_class("phase-check")
+            phases_box.append(label)
+            self.phase_rows.append((key, label))
+        self.progress_page.append(phases_box)
+
+        log_window = Gtk.ScrolledWindow()
+        log_window.set_vexpand(True)
+        log_window.set_margin_top(20)
+        log_window.set_size_request(-1, 120)
+        self.log_buffer = Gtk.TextBuffer()
+        self.log_view = Gtk.TextView(buffer=self.log_buffer)
+        self.log_view.set_editable(False)
+        self.log_view.set_cursor_visible(False)
+        self.log_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.log_view.add_css_class("log-view")
+        self.log_view.add_css_class("monospace")
+        log_window.set_child(self.log_view)
+        self.progress_page.append(log_window)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        actions.set_margin_top(18)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        actions.append(spacer)
+        self.cancel_button = Gtk.Button(label=t("Abbrechen", "Cancel"))
+        self.cancel_button.add_css_class("flat")
+        self.cancel_button.add_css_class("nav-button")
+        self.cancel_button.connect("clicked", self._cancel_install)
+        actions.append(self.cancel_button)
+        self.progress_page.append(actions)
+        self.progress_page.hide()
+
+    def _start_install(self):
+        if not self._account_valid or not self.config.disk:
+            return
+        self.installing = True
+        self._progress = 0.0
+        self._current_phase = -1
+
+        self.rail.hide()
+        self.main_box.hide()
+        self.progress_page.set_visible(True)
+        self.root.append(self.progress_page)
+
+        self._set_phase(0)
+        if "--simulate" in sys.argv or os.environ.get("PRIVOS_INSTALLER_SIMULATE") \
+                or not os.path.isfile(HELPER):
+            self.backend = SimulatedBackend()
+        else:
+            self.backend = LiveBackend()
+        self.backend.start(
+            self.config, self._on_phase, self._on_progress, self._on_log, self._on_done)
+
+    def _set_phase(self, index):
+        if index <= self._current_phase:
+            return
+        self._current_phase = index
+        for row_index, (key, label) in enumerate(self.phase_rows):
+            label.remove_css_class("phase-active")
+            label.remove_css_class("phase-finished")
+            if row_index < index:
+                label.add_css_class("phase-finished")
+                label.set_label("✓  " + t(PHASES[row_index][1], PHASES[row_index][2]))
+            elif row_index == index:
+                label.add_css_class("phase-active")
+        key, de, en = PHASES[index]
+        self.phase_title.set_label(t(de, en) + "…")
+
+    def _on_phase(self, key):
+        if key in PHASE_INDEX:
+            self._set_phase(PHASE_INDEX[key])
+
+    def _on_progress(self, value):
+        if value < 0:  # unbestimmter Zuwachs
+            self._progress = min(0.99, self._progress + 0.001)
+        else:
+            self._progress = max(self._progress, value)
+        self.progress_bar.set_fraction(self._progress)
+        self.percent_label.set_label(f"{int(self._progress * 100)} %")
+
+    def _on_log(self, line):
+        end = self.log_buffer.get_end_iter()
+        self.log_buffer.insert(end, line + "\n")
+        self.log_view.scroll_to_iter(end, 0.0, False, 0.0, 0.0)
+
+    def _cancel_install(self, *_args):
+        self.backend.cancel()
+        self.cancel_button.set_sensitive(False)
+
+    def _on_done(self, success, message):
+        self.installing = False
+        self.progress_page.hide()
+        self.root.remove(self.progress_page)
+        done_page = self._build_done_page(success, message)
+        self.root.append(done_page)
+        self.window.set_content(done_page)
+
+    def _build_done_page(self, success, message):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.set_hexpand(True)
+        page.set_halign(Gtk.Align.CENTER)
+        page.set_valign(Gtk.Align.CENTER)
+        page.set_spacing(18)
+        page.set_size_request(520, -1)
+
+        icon_name = "emblem-ok-symbolic" if success else "dialog-error-symbolic"
+        icon = Gtk.Image.new_from_icon_name(icon_name)
+        icon.set_pixel_size(72)
+        icon.add_css_class("success" if success else "error")
+        page.append(icon)
+
+        title = Gtk.Label(label=t("Installation abgeschlossen", "Installation complete") if success
+                          else t("Installation fehlgeschlagen", "Installation failed"))
+        title.add_css_class("page-title")
+        page.append(title)
+
+        if success:
+            subtitle = Gtk.Label(label=t(
+                "Privos ist bereit. Starte den Rechner neu, um dein neues System zu booten.",
+                "Privos is ready. Restart the computer to boot your new system."))
+        else:
+            subtitle = Gtk.Label(label=message or t(
+                "Ein Fehler ist aufgetreten.", "An error occurred."))
+        subtitle.set_wrap(True)
+        subtitle.set_justify(Gtk.Justification.CENTER)
+        subtitle.add_css_class("page-subtitle")
+        page.append(subtitle)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        buttons.set_halign(Gtk.Align.CENTER)
+        buttons.set_margin_top(10)
+        if success:
+            reboot = Gtk.Button(label=t("Jetzt neu starten", "Restart now"))
+            reboot.add_css_class("suggested-action")
+            reboot.add_css_class("nav-button")
+            reboot.connect("clicked", self._reboot)
+            buttons.append(reboot)
+        else:
+            back = Gtk.Button(label=t("Zurück zur Übersicht", "Back to summary"))
+            back.add_css_class("suggested-action")
+            back.add_css_class("nav-button")
+            back.connect("clicked", self._back_to_summary)
+            buttons.append(back)
+        close = Gtk.Button(label=t("Live-Sitzung nutzen", "Keep using the live session"))
+        close.add_css_class("flat")
+        close.add_css_class("nav-button")
+        close.connect("clicked", lambda *_: self.window.close())
+        buttons.append(close)
+        page.append(buttons)
+        return page
+
+    def _back_to_summary(self, *_args):
+        self.step = len(STEPS) - 1
+        self.window.set_content(self.root)
+        self.rail.set_visible(True)
+        self.main_box.set_visible(True)
+        self._update_nav()
+
+    def _reboot(self, *_args):
+        for command in (["systemctl", "reboot"], ["reboot"]):
+            try:
+                subprocess.Popen(command)
+                return
+            except OSError:
+                continue
+
+
+if __name__ == "__main__":
+    Adw.init()
+    Installer().run(sys.argv)

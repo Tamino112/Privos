@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --window-bg: #fafafa;
+    --header-bg: #ebebeb;
+    --header-border: #dbdcdc;
+    --text: rgba(0,0,0,.86);
+    --subtitle: rgba(0,0,0,.58);
+    --hint: rgba(0,0,0,.45);
+    --accent: #3584e4;
+    --accent-hover: #2c6fd6;
+    --card-bg: rgba(0,0,0,.03);
+    --card-border: rgba(0,0,0,.09);
+    --titlebar-fg: rgba(0,0,0,.5);
+  }
+  body.dark {
+    --window-bg: #242424;
+    --header-bg: #303030;
+    --header-border: #454545;
+    --text: rgba(255,255,255,.87);
+    --subtitle: rgba(255,255,255,.58);
+    --hint: rgba(255,255,255,.45);
+    --accent: #78aeed;
+    --accent-hover: #89b8ef;
+    --card-bg: rgba(255,255,255,.03);
+    --card-border: rgba(255,255,255,.09);
+    --titlebar-fg: rgba(255,255,255,.5);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 660px; height: 600px; overflow: hidden; }
+  body {
+    background: var(--window-bg);
+    font-family: "Segoe UI", Cantarell, "DejaVu Sans", sans-serif;
+    color: var(--text);
+    display: flex; flex-direction: column;
+  }
+
+  /* Fensterleiste wie GTK4-Fallback-Headerbar */
+  .titlebar {
+    height: 46px; flex: 0 0 46px;
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--header-border);
+    display: flex; align-items: center;
+    padding: 0 12px;
+  }
+  .titlebar .circles { display: flex; gap: 8px; }
+  .titlebar .circles span {
+    width: 14px; height: 14px; border-radius: 999px;
+    background: var(--titlebar-fg); opacity: .5;
+  }
+  .titlebar .title {
+    flex: 1; text-align: center;
+    font-size: 13px; font-weight: 600;
+    color: var(--text);
+    padding-right: 46px; /* Ausgleich Kreise */
+  }
+
+  .content {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .column {
+    width: 480px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  .logo { width: 112px; height: 112px; margin-bottom: 24px; }
+
+  h1 {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+    text-align: center;
+  }
+  .subtitle {
+    margin-top: 10px;
+    font-size: 13.5px; text-align: center;
+    color: var(--subtitle); line-height: 1.5;
+  }
+
+  .actions { margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .btn-primary {
+    height: 46px; min-width: 280px; padding: 0 32px;
+    border-radius: 999px; border: none;
+    background: var(--accent);
+    color: #fff; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-secondary {
+    height: 38px; padding: 0 24px;
+    border-radius: 999px; border: none; background: transparent;
+    color: var(--text); font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-secondary:hover { background: var(--card-bg); }
+
+  .checks { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .check {
+    display: flex; align-items: center;
+    border: 1px solid var(--card-border);
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 10px 16px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 999px; margin-right: 10px; }
+  .dot.ok { background: var(--accent); }
+  .dot.warn { background: #e5a50a; }
+  .check span { font-size: 12.5px; font-weight: 500; color: var(--subtitle); }
+
+  .hint {
+    margin-top: 24px;
+    font-size: 12px; text-align: center; max-width: 420px;
+    color: var(--hint);
+  }
+
+  /* simuliert die gestaffelte Einblendung (Endzustand) */
+  @keyframes rise { from { opacity: 0; transform: translateY(14px);} to { opacity: 1; transform: none; } }
+  .anim { animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
+  .d1 { animation-delay: .1s; } .d2 { animation-delay: .2s; } .d3 { animation-delay: .3s; }
+  .d4 { animation-delay: .4s; } .d5 { animation-delay: .5s; }
+</style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="circles"><span></span></div>
+    <div class="title">Privos installieren</div>
+  </div>
+  <div class="content">
+    <div class="column">
+      <img class="logo anim d1" src="../../branding/privos-logo.svg" alt="">
+      <div class="anim d2" style="display:flex;flex-direction:column;align-items:center">
+        <h1>Willkommen bei Privos</h1>
+        <div class="subtitle">Entdecke Privos in Ruhe oder beginne direkt<br>mit der Installation.</div>
+      </div>
+      <div class="actions anim d3">
+        <div class="btn-primary">Privos installieren</div>
+        <div class="btn-secondary">Erst ausprobieren</div>
+      </div>
+      <div class="checks anim d4">
+        <div class="check"><span class="dot ok"></span><span>UEFI-Modus aktiv</span></div>
+        <div class="check"><span class="dot ok"></span><span>16 GB Arbeitsspeicher erkannt</span></div>
+      </div>
+      <div class="hint anim d5">Der vollständige NVIDIA-Treiber steht nach der Installation bereit.</div>
+    </div>
+  </div>
+  <script>
+    const h = location.hash;
+    if (h.includes('dark')) document.body.classList.add('dark');
+    if (h.includes('still')) {
+      document.querySelectorAll('.anim').forEach(el => { el.style.animation = 'none'; el.style.opacity = 1; });
+    }
+  </script>
+</body>
+</html>

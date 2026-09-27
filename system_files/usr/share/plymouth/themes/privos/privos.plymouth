@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Privos
-Description=Privos-Bootanimation: helles Zeichen und schmale Ladeleiste auf dunklem Grund
+Description=Privos-Bootanimation: helles Zeichen und Ringbogen-Spinner auf dunklem Grund
 ModuleName=two-step
 
 [two-step]

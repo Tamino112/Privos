@@ -94,6 +94,6 @@ dconf update
 THEME=/usr/share/plymouth/themes/privos
 find /usr/share/plymouth/themes/spinner -name '*.png' ! -name 'watermark.png' -exec cp -t "${THEME}" {} +
 rm -f "${THEME}"/throbber-*.png
-python3 "${BRANDING}/make-boot-progress.py" "${THEME}"
+python3 "${BRANDING}/make-boot-spinner.py" "${THEME}"
 render "${BRANDING}/privos-logo-boot.svg" 128 128 "${THEME}/watermark.png"
 sed -i 's/^Theme=.*/Theme=privos/' /usr/share/plymouth/plymouthd.defaults

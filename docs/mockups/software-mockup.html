@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #242424; --header: #303030; --border: rgba(255,255,255,.08);
+    --text: rgba(255,255,255,.87); --dim: rgba(255,255,255,.55);
+    --faint: rgba(255,255,255,.42);
+    --accent: #4db3c4; --accent-dim: rgba(77,179,196,.14); --on-accent: #04262b;
+    --card: #2c2c2c; --card-hover: #333333;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1100px; height:700px; overflow:hidden; }
+  body { background:var(--bg); color:var(--text);
+         font-family:"Segoe UI",Inter,Cantarell,sans-serif; display:flex; flex-direction:column; }
+  .header { height:46px; flex:0 0 46px; background:var(--header);
+            border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 8px; gap:4px; }
+  .hbtn { width:34px; height:34px; border-radius:999px; display:flex; align-items:center; justify-content:center;
+          color:var(--dim); font-size:15px; }
+  .hbtn.accent { background:var(--accent); color:var(--on-accent); }
+  .title { font-size:13.5px; font-weight:700; margin-left:8px; }
+  .search { margin-left:auto; margin-right:6px; font-size:12.5px; color:var(--faint);
+            border:1px solid var(--border); border-radius:999px; padding:6px 16px 6px 30px; position:relative; }
+  .search::before { content:"⌕"; position:absolute; left:12px; top:5px; font-size:13px; }
+  .content { flex:1; overflow:hidden; position:relative; }
+  .page { display:none; position:absolute; inset:0; padding:22px 26px; overflow:hidden; }
+  .page.active { display:block; }
+
+  .banner { position:relative; border-radius:14px; overflow:hidden; height:190px; }
+  .banner img { width:100%; height:100%; object-fit:cover; display:block; }
+  .banner .ov { position:absolute; inset:0; background:linear-gradient(90deg, rgba(10,25,30,.88) 0%, rgba(10,25,30,.45) 55%, transparent);
+                display:flex; flex-direction:column; justify-content:center; padding:0 30px; }
+  .banner .tag { font-size:11px; font-weight:700; letter-spacing:.12em; color:var(--accent); text-transform:uppercase; }
+  .banner .name { font-size:24px; font-weight:700; margin-top:6px; }
+  .banner .desc { font-size:12.5px; color:rgba(255,255,255,.75); margin-top:6px; max-width:420px; }
+  .banner .btn { display:inline-block; margin-top:14px; background:var(--accent); color:var(--on-accent);
+                 font-weight:700; font-size:12.5px; padding:8px 22px; border-radius:999px; width:fit-content; }
+
+  .section { display:flex; align-items:baseline; gap:10px; margin:22px 2px 12px; }
+  .section h2 { font-size:15px; font-weight:700; }
+  .section span { font-size:11.5px; color:var(--faint); }
+
+  .cats { display:flex; gap:10px; }
+  .cat { flex:1; background:var(--card); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:10px;
+         font-size:12.5px; font-weight:600; transition:background-color 150ms ease; }
+  .cat:hover { background:var(--card-hover); }
+  .cat .ic { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+
+  .appgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .app { background:var(--card); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px;
+         transition:background-color 150ms ease; }
+  .app:hover { background:var(--card-hover); }
+  .app .ic { width:44px; height:44px; border-radius:12px; flex:0 0 44px; display:flex; align-items:center;
+             justify-content:center; font-size:19px; font-weight:700; color:#fff; }
+  .app .txt { flex:1; min-width:0; }
+  .app .n { font-size:13px; font-weight:700; }
+  .app .s { font-size:11.5px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .app .r { font-size:11px; color:var(--accent); margin-top:2px; }
+  .install { background:var(--accent); color:var(--on-accent); border-radius:999px; font-size:12px; font-weight:700;
+             padding:7px 18px; }
+
+  /* Detailseite */
+  .detail-head { display:flex; gap:18px; align-items:center; }
+  .detail-head .ic { width:72px; height:72px; border-radius:20px; display:flex; align-items:center; justify-content:center;
+                     font-size:32px; font-weight:700; color:#fff; }
+  .detail-head .n { font-size:21px; font-weight:700; }
+  .detail-head .d { font-size:12.5px; color:var(--dim); margin-top:3px; }
+  .detail-head .r { font-size:12px; color:var(--accent); margin-top:5px; }
+  .detail-actions { margin-left:auto; display:flex; gap:10px; }
+  .pill { border-radius:999px; font-size:13px; font-weight:700; padding:10px 26px; }
+  .pill.primary { background:var(--accent); color:var(--on-accent); }
+  .pill.ghost { border:1px solid var(--border); color:var(--text); }
+  .shots { display:flex; gap:12px; margin-top:22px; }
+  .shot { flex:1; height:150px; border-radius:14px; background:var(--card); border:1px solid var(--border); }
+  .desc { margin-top:20px; font-size:12.5px; color:var(--dim); line-height:1.65; max-width:640px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="hbtn">‹</div>
+    <div class="hbtn">›</div>
+    <div class="title">Privos Software</div>
+    <div class="search">Nach Apps suchen</div>
+    <div class="hbtn">⋮</div>
+  </div>
+  <div class="content">
+
+    <div class="page" id="p-explore">
+      <div class="banner">
+        <img src="../../branding/privos-wallpaper-dark.png">
+        <div class="ov">
+          <div class="tag">App des Tages</div>
+          <div class="name">Creative Studio</div>
+          <div class="desc">Bildbearbeitung, Zeichnen und Design – alles in einer App, optimiert für Privos.</div>
+          <div class="btn">Installieren</div>
+        </div>
+      </div>
+
+      <div class="section"><h2>Kategorien</h2><span>Alles entdecken</span></div>
+      <div class="cats">
+        <div class="cat"><span class="ic" style="background:rgba(77,179,196,.16)">🎵</span>Audio &amp; Video</div>
+        <div class="cat"><span class="ic" style="background:rgba(120,174,237,.16)">✎</span>Grafik &amp; Design</div>
+        <div class="cat"><span class="ic" style="background:rgba(145,196,117,.16)">⌨</span>Entwicklung</div>
+        <div class="cat"><span class="ic" style="background:rgba(230,183,120,.16)">✉</span>Kommunikation</div>
+        <div class="cat"><span class="ic" style="background:rgba(220,138,221,.16)">🎮</span>Spiele</div>
+      </div>
+
+      <div class="section"><h2>Zuletzt aktualisiert</h2><span>Weitere anzeigen</span></div>
+      <div class="appgrid">
+        <div class="app"><span class="ic" style="background:#3584e4">F</span>
+          <div class="txt"><div class="n">Firefox</div><div class="s">Webbrowser von Mozilla</div><div class="r">★★★★★ · 4,8</div></div>
+          <span class="install">Installieren</span></div>
+        <div class="app"><span class="ic" style="background:#4db3c4">P</span>
+          <div class="txt"><div class="n">Privos Notes</div><div class="s">Notizen, synchronisiert &amp; verschlüsselt</div><div class="r">★★★★★ · 4,9</div></div>
+          <span class="install">Installieren</span></div>
+        <div class="app"><span class="ic" style="background:#e5a50a">K</span>
+          <div class="txt"><div class="n">Krita</div><div class="s">Digitale Malerei und Illustration</div><div class="r">★★★★☆ · 4,6</div></div>
+          <span class="install">Installieren</span></div>
+        <div class="app"><span class="ic" style="background:#33b245">T</span>
+          <div class="txt"><div class="n">Telegram Desktop</div><div class="s">Schneller Nachrichtendienst</div><div class="r">★★★★☆ · 4,5</div></div>
+          <span class="install">Installieren</span></div>
+      </div>
+    </div>
+
+    <div class="page" id="p-details">
+      <div class="detail-head">
+        <span class="ic" style="background:#3584e4">F</span>
+        <div>
+          <div class="n">Firefox</div>
+          <div class="d">Webbrowser von Mozilla</div>
+          <div class="r">★★★★★ 4,8 · 12.400 Bewertungen · Open Source</div>
+        </div>
+        <div class="detail-actions">
+          <span class="pill ghost">Quelle: Flathub</span>
+          <span class="pill primary">Installieren</span>
+        </div>
+      </div>
+      <div class="shots">
+        <div class="shot"></div><div class="shot"></div><div class="shot"></div>
+      </div>
+      <div class="desc">
+        Firefox ist der schnelle, private und offene Webbrowser von Mozilla.
+        Mit integriertem Tracking-Schutz, synchronisierten Lesezeichen und
+        Unterstützung für moderne Webstandards. Diese Version wird direkt
+        über Flathub gepflegt und erhält automatische Sicherheitsupdates.
+      </div>
+    </div>
+
+  </div>
+  <script>
+    const page = (location.hash || '#explore').slice(1);
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('p-' + page).classList.add('active');
+  </script>
+</body>
+</html>

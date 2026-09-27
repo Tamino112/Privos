@@ -1,0 +1,9 @@
+// Erlaubt dem angemeldeten Benutzer den Start des Privos-Installations-Helfers
+// ohne Passwortabfrage (nur in aktiven Sitzungen).
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/privos/privos-install-run" &&
+        subject.active && subject.local) {
+        return polkit.Result.YES;
+    }
+});

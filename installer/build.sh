@@ -106,6 +106,9 @@ for desktop in /usr/share/applications/liveinst.desktop /etc/xdg/autostart/livei
         -e 's/^Icon=.*/Icon=privos-logo/' \
         "${desktop}"
 done
+# Der eigene Assistent (privos-installer) ersetzt den automatischen Anaconda-Start:
+# sonst öffnet das alte Anaconda-Fenster zusätzlich zum Willkommensfenster.
+rm -f /etc/xdg/autostart/liveinst-setup.desktop
 
 # --- Dienste, die im Live-System nichts zu suchen haben --------------------------------
 for unit in \

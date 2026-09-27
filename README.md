@@ -35,7 +35,7 @@ Details: [NVIDIA.md](system_files/usr/share/doc/privos/NVIDIA.md)
 ## Herunterladen & Installieren
 
 1. Auf GitHub **Actions** → **Build Privos ISO** öffnen und den neuesten grünen Lauf anklicken.
-   Fehlt einer, dann oben rechts **Run workflow** drücken; das dauert etwa eine Stunde.
+   Fehlt einer, dann oben rechts **Run workflow** drücken; der Build kann einige zehn Minuten dauern.
 2. Unten bei **Artifacts** die Datei `privos-nvidia-…-live-amd64.iso` herunterladen.
    GitHub liefert sie als ZIP, darin liegt die ISO.
 3. Die ISO mit [Fedora Media Writer](https://fedoraproject.org/workstation/download), balenaEtcher
@@ -61,9 +61,12 @@ system_files/            Dateien, die 1:1 ins System kopiert werden (/usr, /etc)
 tests/                   Tests (z. B. Entscheidungslogik des VRAM-Wächters)
 .github/workflows/       Automatischer Build von Image und ISO
 docs/PLAN.md             Vision & Roadmap
+docs/mockups/             HTML-Entwürfe und Screenshots für Boot, Welcome, Installer und Software
 ```
 
 ## Lokal bauen
+
+Unter Linux oder WSL 2 mit Podman:
 
 ```bash
 podman build -t privos-nvidia:dev -f Containerfile .

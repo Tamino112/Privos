@@ -1,0 +1,19 @@
+/* Privos Oberflächen-Verfeinerung (GTK3, Legacy-Apps). */
+
+button {
+    border-radius: 8px;
+}
+
+button.suggested-action,
+button.destructive-action {
+    border-radius: 999px;
+}
+
+entry {
+    border-radius: 8px;
+}
+
+window.csd popup decoration,
+popover {
+    border-radius: 12px;
+}

@@ -1,0 +1,41 @@
+/* Privos Oberflächen-Verfeinerung (GTK4).
+   Wirkt in allen GTK4-Anwendungen, inkl. GNOME Software (Privos Software).
+   Dezent: nur Radien und weiche Übergänge, keine Farbeingriffe. */
+
+button {
+    border-radius: 10px;
+}
+
+button.suggested-action,
+button.destructive-action {
+    border-radius: 999px;
+}
+
+entry,
+spinbutton {
+    border-radius: 10px;
+}
+
+.card,
+toolbarview .toolbarview-content view,
+scrolledwindow.frame {
+    border-radius: 14px;
+}
+
+popover > arrow,
+popover > contents {
+    border-radius: 14px;
+}
+
+menubar {
+    padding: 3px 6px;
+}
+
+/* Weiche Hervorhebung bei Hover auf Karten und Listenzeilen */
+.card:hover {
+    transition: background-color 150ms ease;
+}
+
+button {
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}

@@ -1,0 +1,41 @@
+#!/bin/bash
+# Wird von privos-installer per pkexec gestartet und leitet liveinst mit der
+# erzeugten Kickstart-Datei. Gibt Markierungen auf stdout aus, die die
+# Fortschrittsanzeige in der App parsen kann.
+set -uo pipefail
+
+KS="${1:?Kickstart-Datei fehlt}"
+echo "[PRIVOS] phase:partition"
+echo "[PRIVOS] progress:5"
+
+if ! command -v liveinst >/dev/null 2>&1; then
+    echo "liveinst wurde nicht gefunden" >&2
+    exit 127
+fi
+
+# Fortschritts-Markierungen aus bekannten Anaconda-Meldungen ableiten.
+liveinst --kickstart "${KS}" 2>&1 | while IFS= read -r line; do
+    echo "[liveinst] ${line}"
+    case "${line}" in
+        *"storage configuration"*|*"partitioning"*)
+            echo "[PRIVOS] phase:partition"; echo "[PRIVOS] progress:10" ;;
+        *"Installing"*|*"ostreecontainer"*|*"payload"*)
+            echo "[PRIVOS] phase:copy"; echo "[PRIVOS] progress:40" ;;
+        *"bootloader"*|*"GRUB"*)
+            echo "[PRIVOS] phase:bootloader"; echo "[PRIVOS] progress:85" ;;
+        *"post-installation"*|*"post scripts"*)
+            echo "[PRIVOS] phase:account"; echo "[PRIVOS] progress:92" ;;
+        *"progress:"*|*"%"*)
+            echo "[PRIVOS] progress:95" ;;
+        *"Installation complete"*|*"complete!"*)
+            echo "[PRIVOS] phase:updates"; echo "[PRIVOS] progress:97" ;;
+    esac
+done
+rc=${PIPESTATUS[0]}
+
+if [[ ${rc} -eq 0 ]]; then
+    echo "[PRIVOS] phase:finish"
+    echo "[PRIVOS] progress:100"
+fi
+echo "[PRIVOS] done:${rc}"
+exit "${rc}"

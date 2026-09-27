@@ -316,7 +316,7 @@ class Welcome(Adw.Application):
         window.add_tick_callback(on_frame)
 
     def install(self, _button):
-        subprocess.Popen(["liveinst"], start_new_session=True)
+        subprocess.Popen(["privos-installer"], start_new_session=True)
         if self._window:
             self._window.close()
 

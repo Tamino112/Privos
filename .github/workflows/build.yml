@@ -31,12 +31,14 @@ jobs:
             system_files/usr/bin/privos-gpu-check \
             system_files/usr/libexec/privos/nvidia-flatpak-sync \
             system_files/usr/lib/systemd/user-environment-generators/60-privos-vram-budget \
-            installer/build.sh
+            installer/build.sh \
+            installer/system_files/usr/libexec/privos/privos-install-run
 
       - name: Python-Tests (VRAM-Wächter)
         run: |
           python3 -m unittest discover -s tests -v
           python3 -m py_compile installer/system_files/usr/bin/privos-live-welcome
+          python3 -m py_compile installer/system_files/usr/bin/privos-installer
 
   build:
     name: Build & Push

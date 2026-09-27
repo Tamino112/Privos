@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #242424; --rail: #262626; --border: rgba(255,255,255,.08);
+    --text: rgba(255,255,255,.87); --dim: rgba(255,255,255,.55);
+    --faint: rgba(255,255,255,.45);
+    --accent: #4db3c4; --accent-bg: rgba(77,179,196,.14); --on-accent: #04262b;
+    --card: rgba(255,255,255,.03); --warn: #f5c211;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:920px; height:640px; overflow:hidden; }
+  body { background:var(--bg); color:var(--text);
+         font-family:"Segoe UI",Inter,Cantarell,sans-serif; display:flex; }
+  .rail { width:250px; flex:0 0 250px; background:var(--rail);
+          border-right:1px solid var(--border); display:flex; flex-direction:column; }
+  .brand { display:flex; gap:12px; align-items:center; padding:24px 20px 14px; }
+  .brand img { width:36px; height:36px; }
+  .brand .n { font-size:15px; font-weight:700; }
+  .brand .s { font-size:11.5px; color:var(--dim); }
+  .step { display:flex; gap:12px; align-items:center; margin:2px 10px; padding:9px 16px;
+          border-radius:10px; color:var(--faint); font-size:13px; }
+  .step .i { width:22px; height:22px; border-radius:999px; background:rgba(255,255,255,.08);
+             display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex:0 0 22px; }
+  .step.cur { background:var(--accent-bg); color:var(--accent); }
+  .step.cur .i { background:var(--accent); color:var(--on-accent); }
+  .step.done { color:var(--dim); }
+  .step.done .i { background:var(--accent); color:var(--on-accent); }
+  .rail .foot { margin-top:auto; padding:16px 20px; font-size:11.5px; color:var(--faint); }
+
+  .main { flex:1; display:flex; flex-direction:column; }
+  .content { flex:1; padding:32px 40px 8px; overflow:hidden; }
+  .page { display:none; }
+  .page.active { display:block; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:-.02em; }
+  .sub { font-size:13px; color:var(--dim); margin-top:6px; }
+  .grouplabel { font-size:12px; color:var(--dim); margin:16px 0 8px; }
+  .opt { border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:10px 16px;
+         margin-bottom:8px; background:var(--card); font-size:13.5px; font-weight:600; }
+  .opt small { display:block; font-weight:400; font-size:12px; color:var(--dim); }
+  .opt.sel { border-color:var(--accent); background:var(--accent-bg); }
+  .two { display:flex; gap:20px; }
+  .two > div { flex:1; }
+  .warn { color:var(--warn); font-size:12.5px; margin-top:12px; }
+  .switchrow { border:1px solid rgba(255,255,255,.09); border-radius:14px; padding:14px 16px;
+               background:var(--card); display:flex; align-items:center; gap:14px; }
+  .switchrow .txt { flex:1; font-size:13.5px; font-weight:600; }
+  .switchrow .txt small { display:block; font-weight:400; color:var(--dim); font-size:12px; }
+  .switch { width:46px; height:26px; border-radius:999px; background:var(--accent); position:relative; flex:0 0 46px; }
+  .switch::after { content:""; position:absolute; width:20px; height:20px; border-radius:999px;
+                   background:#fff; top:3px; right:3px; }
+  .walls { display:flex; gap:14px; margin-top:8px; }
+  .wall { flex:1; border:2px solid transparent; border-radius:16px; padding:4px; }
+  .wall img { width:100%; height:120px; object-fit:cover; border-radius:11px; display:block; }
+  .wall .l { text-align:center; font-size:12px; color:var(--dim); padding:8px 0 4px; }
+  .wall.sel { border-color:var(--accent); }
+  .entryrow { border:1px solid rgba(255,255,255,.09); border-radius:0; padding:12px 16px;
+              background:var(--card); font-size:13px; color:var(--faint); }
+  .entryrow:first-child { border-radius:14px 14px 0 0; }
+  .entryrow:last-child { border-radius:0 0 14px 14px; }
+  .entryrow + .entryrow { border-top:none; }
+  .entryrow b { display:block; font-weight:600; font-size:12px; color:var(--dim); margin-bottom:3px; }
+  .summaryrow { display:flex; justify-content:space-between; padding:12px 16px;
+                border-bottom:1px solid var(--border); font-size:13.5px; }
+  .summaryrow span:last-child { color:var(--dim); }
+  .sumcard { border:1px solid rgba(255,255,255,.09); border-radius:14px; overflow:hidden;
+             background:var(--card); margin-top:8px; }
+
+  .bar { height:8px; border-radius:999px; background:rgba(255,255,255,.1); margin-top:16px; overflow:hidden; }
+  .bar > div { height:100%; border-radius:999px; background:var(--accent); }
+  .phase { font-size:16px; font-weight:600; margin-top:6px; }
+  .pct { float:right; font-size:13px; font-weight:600; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .checks { margin-top:20px; }
+  .chk { font-size:13px; color:var(--faint); padding:5px 0; }
+  .chk.on { color:var(--accent); font-weight:600; }
+  .chk.fin { color:var(--dim); }
+  .log { margin-top:18px; background:rgba(255,255,255,.04); border-radius:12px; padding:10px 12px;
+         font-family:"JetBrains Mono",Consolas,monospace; font-size:10.5px; color:var(--faint);
+         height:110px; overflow:hidden; line-height:1.55; }
+  .bottom { display:flex; justify-content:space-between; padding:14px 40px 16px; border-top:1px solid var(--border); }
+  .btn { border:none; font-family:inherit; font-size:13.5px; font-weight:600; cursor:pointer; }
+  .btn.back { background:transparent; color:var(--text); padding:10px 22px; border-radius:999px; }
+  .btn.fwd { background:var(--accent); color:var(--on-accent); padding:10px 26px; border-radius:999px; }
+</style>
+</head>
+<body>
+  <div class="rail">
+    <div class="brand">
+      <img src="../../branding/privos-logo.svg">
+      <div><div class="n">Privos</div><div class="s">Installer</div></div>
+    </div>
+    <div class="step done"><span class="i">✓</span> Sprache &amp; Tastatur</div>
+    <div class="step done"><span class="i">✓</span> Festplatte</div>
+    <div class="step done"><span class="i">✓</span> Aktualisierungen</div>
+    <div class="step done"><span class="i">✓</span> Erscheinungsbild</div>
+    <div class="step cur"><span class="i">5</span> Benutzerkonto</div>
+    <div class="step"><span class="i">6</span> Übersicht</div>
+    <div class="foot">Privos · Linux</div>
+  </div>
+  <div class="main">
+    <div class="content">
+
+      <div class="page" id="p-language">
+        <h1>Sprache &amp; Tastatur wählen</h1>
+        <div class="sub">Diese Einstellungen gelten für die Installation und das neue System.</div>
+        <div class="two">
+          <div>
+            <div class="grouplabel">Sprache</div>
+            <div class="opt sel">Deutsch</div>
+            <div class="opt">English (US)<small>English (US)</small></div>
+            <div class="opt">English (UK)<small>English (UK)</small></div>
+            <div class="opt">Français<small>French</small></div>
+            <div class="opt">Español<small>Spanish</small></div>
+          </div>
+          <div>
+            <div class="grouplabel">Tastaturbelegung</div>
+            <div class="opt sel">Deutsch</div>
+            <div class="opt">English (US)</div>
+            <div class="opt">English (UK)</div>
+            <div class="opt">Français (AZERTY)</div>
+            <div class="opt">Español</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="p-disk">
+        <h1>Zielfestplatte wählen</h1>
+        <div class="sub">Die ausgewählte Festplatte wird vollständig gelöscht.</div>
+        <div style="margin-top:16px">
+          <div class="opt sel">/dev/nvme0n1<small>Samsung SSD 980 PRO · 1,0 TB</small></div>
+          <div class="opt">/dev/sda<small>SanDisk Ultra Fit · 28,6 GB · Wechseldatenträger</small></div>
+        </div>
+        <div class="warn">Warnung: Alle Daten auf der gewählten Festplatte gehen verloren.</div>
+      </div>
+
+      <div class="page" id="p-wallpaper">
+        <h1>Erscheinungsbild wählen</h1>
+        <div class="sub">Der Hintergrund wird auch direkt in dieser Live-Sitzung übernommen.</div>
+        <div class="walls">
+          <div class="wall sel"><img src="../../branding/privos-wallpaper-default.png"><div class="l">Privos</div></div>
+          <div class="wall"><img src="../../branding/privos-wallpaper-dark.png"><div class="l">Dunkel</div></div>
+          <div class="wall"><img src="../../branding/privos-wallpaper-light.png"><div class="l">Hell</div></div>
+        </div>
+      </div>
+
+      <div class="page" id="p-account">
+        <h1>Benutzerkonto erstellen</h1>
+        <div class="sub">Dieses Konto wird beim ersten Start eingerichtet.</div>
+        <div style="margin-top:18px">
+          <div class="entryrow"><b>Vollständiger Name</b>Moritz T.</div>
+          <div class="entryrow"><b>Benutzername</b>moritz</div>
+          <div class="entryrow"><b>Passwort</b>••••••••</div>
+          <div class="entryrow"><b>Passwort bestätigen</b>••••••••</div>
+          <div class="entryrow"><b>Rechnername</b>privos-desktop</div>
+        </div>
+      </div>
+
+      <div class="page" id="p-progress">
+        <div class="phase">System wird kopiert…<span class="pct">46 %</span></div>
+        <div class="bar"><div style="width:46%"></div></div>
+        <div class="checks">
+          <div class="chk fin">✓&nbsp; Festplatte wird partitioniert</div>
+          <div class="chk on">System wird kopiert</div>
+          <div class="chk">Bootloader wird eingerichtet</div>
+          <div class="chk">Benutzerkonto wird eingerichtet</div>
+          <div class="chk">Aktualisierungen werden installiert</div>
+          <div class="chk">Fast fertig</div>
+        </div>
+        <div class="log">
+          [liveinst] ostreecontainer: ziehe Image aus containers-storage<br>
+          [liveinst] Schreibe Btrfs-Subvolumes @ und @var<br>
+          [liveinst] Verifiziere Dateisystem-Prüfsummen<br>
+          [PRIVOS] phase: copy<br>
+          [liveinst] 1.154.882.304 Bytes kopiert<br>
+          [liveinst] Kopiere /usr (2,4 GB gesamt)…
+        </div>
+      </div>
+
+    </div>
+    <div class="bottom" id="nav">
+      <button class="btn back">Zurück</button>
+      <button class="btn fwd" id="fwd">Weiter</button>
+    </div>
+  </div>
+  <script>
+    const page = (location.hash || '#account').slice(1);
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    if (page === 'progress') {
+      document.getElementById('p-progress').classList.add('active');
+      document.getElementById('nav').style.display = 'none';
+    } else {
+      document.getElementById('p-' + page).classList.add('active');
+      if (page === 'summary') document.getElementById('fwd').textContent = 'Installation starten';
+    }
+  </script>
+</body>
+</html>
