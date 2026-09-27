@@ -98,6 +98,35 @@ der laufenden VM arbeiten. Änderungen am `Containerfile` oder unter
 Die VM emuliert keine NVIDIA-Grafikkarte; NVIDIA-Funktionen brauchen einen Test
 auf passender Hardware.
 
+### Auf einem zweiten Windows-PC
+
+1. Virtualisierung im BIOS aktivieren. In einer PowerShell als Administrator
+   `wsl --install -d Ubuntu` ausführen und den PC bei Aufforderung neu starten.
+2. Ubuntu öffnen und QEMU installieren:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y qemu-system-x86 qemu-utils ovmf
+   ```
+
+3. Das Repository mit `git clone https://github.com/Tamino112/Privos.git`
+   herunterladen. Die fertige ISO einmalig vom ersten PC kopieren oder unter
+   [GitHub Actions → Build Privos ISO](https://github.com/Tamino112/Privos/actions/workflows/build-iso.yml)
+   als Artefakt herunterladen und aus dem ZIP entpacken. Artefakte dieses
+   Workflows werden nach sieben Tagen gelöscht.
+4. Im Repository die vorhandene ISO starten. `-IsoPath` akzeptiert einen
+   Windows-Pfad; das Skript kopiert die ISO einmalig nach WSL:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1 -Live -IsoPath "C:\Pfad\zur\Privos.iso"
+   ```
+
+   Danach genügt `powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1 -Live`.
+
+Den Quellcode auf dem zweiten PC mit `git pull` aktualisieren. Die vorhandene
+ISO zeigt weiterhin ihren damaligen Stand; für neue Systemänderungen muss ein
+neues OS-Image gebaut oder eine neuere ISO übernommen werden.
+
 ## Image-Signatur (optional, empfohlen)
 
 ```bash
