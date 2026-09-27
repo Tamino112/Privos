@@ -1,0 +1,139 @@
+#!/usr/bin/bash
+# privos-gpu-check – prüft, ob die NVIDIA-Grafikkarte unter Privos optimal läuft.
+set -uo pipefail
+
+if [[ -t 1 ]]; then
+    GREEN=$'\e[32m' YELLOW=$'\e[33m' RED=$'\e[31m' BOLD=$'\e[1m' RESET=$'\e[0m'
+else
+    GREEN="" YELLOW="" RED="" BOLD="" RESET=""
+fi
+ok()   { printf '  %s✔%s %s\n' "${GREEN}" "${RESET}" "$*"; }
+warn() { printf '  %s!%s %s\n' "${YELLOW}" "${RESET}" "$*"; WARNINGS=$((WARNINGS + 1)); }
+fail() { printf '  %s✘%s %s\n' "${RED}" "${RESET}" "$*"; ERRORS=$((ERRORS + 1)); }
+hint() { printf '      → %s\n' "$*"; }
+section() { printf '\n%s%s%s\n' "${BOLD}" "$*" "${RESET}"; }
+WARNINGS=0
+ERRORS=0
+
+section "Grafikkarte"
+mapfile -t GPUS < <(lspci -nn 2>/dev/null | grep -E '(VGA compatible|3D) controller' | grep -i '10de:')
+if (( ${#GPUS[@]} == 0 )); then
+    fail "Keine NVIDIA-GPU gefunden"
+    exit 1
+fi
+for gpu in "${GPUS[@]}"; do
+    ok "${gpu#*: }"
+done
+if lspci -nn | grep -E '(VGA compatible|3D) controller' | grep -qP 'G(K|M|P|V)\d{3}'; then
+    fail "Ältere GPU erkannt (Kepler/Maxwell/Pascal/Volta, z. B. GTX 9xx/10xx)"
+    hint "Der NVIDIA-Open-Treiber unterstützt erst ab GTX 16xx / RTX 20xx."
+    hint "Für diese Karte ist das Image 'privos-nvidia-legacy' vorgesehen."
+fi
+if lspci -nn | grep -E '(VGA compatible|3D) controller' | grep -qviE '10de:'; then
+    ok "Hybrid-Grafik erkannt (zusätzliche Intel/AMD-GPU)"
+fi
+
+section "Treiber"
+if [[ -d /sys/module/nvidia ]]; then
+    ok "NVIDIA-Treiber geladen: $(cat /sys/module/nvidia/version)"
+    if grep -q "Open Kernel Module" /proc/driver/nvidia/version 2>/dev/null; then
+        ok "NVIDIA Open Kernel Module aktiv"
+    fi
+else
+    fail "NVIDIA-Treiber ist NICHT geladen"
+    if mokutil --sb-state 2>/dev/null | grep -q enabled; then
+        hint "Secure Boot ist an – vermutlich wurde der Signaturschlüssel noch nicht registriert:"
+        for cert in /etc/pki/akmods/certs/*.der; do
+            [[ -e "${cert}" ]] && hint "sudo mokutil --import ${cert}   (Passwort: universalblue), dann neu starten"
+        done
+    fi
+fi
+if [[ -d /sys/module/nouveau ]]; then
+    fail "nouveau ist geladen (blockiert den NVIDIA-Treiber)"
+else
+    ok "nouveau ist deaktiviert"
+fi
+if [[ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" == "Y" ]]; then
+    ok "Kernel Modesetting aktiv (nötig für Wayland)"
+else
+    fail "nvidia-drm modeset ist nicht aktiv"
+fi
+if [[ "$(cat /sys/module/nvidia_drm/parameters/fbdev 2>/dev/null)" == "Y" ]]; then
+    ok "NVIDIA-Framebuffer aktiv (sauberer Bootscreen/TTY)"
+fi
+
+section "Standby & Speicher"
+if grep -q "PreserveVideoMemoryAllocations: 1" /proc/driver/nvidia/params 2>/dev/null; then
+    ok "VRAM wird beim Standby gesichert"
+else
+    warn "VRAM-Sicherung beim Standby ist aus (Standby kann Grafikfehler verursachen)"
+fi
+if systemctl is-active --quiet privos-vram-guard.service; then
+    ok "VRAM-Wächter läuft (Notfall-Taste: Strg+Alt+Umschalt+Esc)"
+else
+    warn "VRAM-Wächter läuft nicht"
+    hint "sudo systemctl enable --now privos-vram-guard.service"
+fi
+if systemctl is-active --quiet systemd-oomd.service; then
+    ok "systemd-oomd aktiv (schützt vor Einfrieren bei vollem RAM)"
+else
+    warn "systemd-oomd ist nicht aktiv"
+fi
+if swapon --show=NAME --noheadings 2>/dev/null | grep -q zram; then
+    ok "ZRAM aktiv ($(swapon --show=SIZE --noheadings 2>/dev/null | head -1 | tr -d ' '))"
+else
+    warn "Kein ZRAM-Swap aktiv"
+fi
+if command -v privos-vram-guard >/dev/null && [[ -d /sys/module/nvidia ]]; then
+    privos-vram-guard status 2>/dev/null | grep -E 'VRAM:' | sed 's/^ */  ✔ /'
+fi
+
+section "Desktop & Grafik-APIs"
+case "${XDG_SESSION_TYPE:-}" in
+    wayland) ok "Wayland-Sitzung" ;;
+    x11) warn "X11-Sitzung – Wayland ist mit NVIDIA inzwischen die bessere Wahl (VRR, HDR, kein Tearing)" ;;
+    *) ok "Keine grafische Sitzung (Terminal/SSH) – Desktop-Checks übersprungen" ;;
+esac
+if command -v vulkaninfo >/dev/null; then
+    if vulkaninfo --summary 2>/dev/null | grep -q "driverID *= DRIVER_ID_NVIDIA_PROPRIETARY"; then
+        ok "Vulkan läuft über den NVIDIA-Treiber"
+    else
+        warn "Vulkan nutzt nicht den NVIDIA-Treiber (oder keine grafische Sitzung)"
+    fi
+fi
+if command -v vainfo >/dev/null && [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+    if LIBVA_DRIVER_NAME=nvidia vainfo 2>/dev/null | grep -q "VAProfileH264"; then
+        ok "Hardware-Videodekodierung (NVDEC/VA-API) verfügbar"
+    else
+        warn "Hardware-Videodekodierung über VA-API nicht verfügbar"
+    fi
+fi
+
+section "Apps & Container"
+if command -v flatpak >/dev/null && [[ -r /sys/module/nvidia/version ]]; then
+    ref="org.freedesktop.Platform.GL.nvidia-$(tr '.' '-' < /sys/module/nvidia/version)"
+    if flatpak info "${ref}" >/dev/null 2>&1; then
+        ok "Flatpak-Apps nutzen denselben NVIDIA-Treiber"
+    else
+        warn "Passende NVIDIA-Laufzeit für Flatpak fehlt"
+        hint "sudo /usr/libexec/privos/nvidia-flatpak-sync sync"
+    fi
+fi
+if command -v nvidia-ctk >/dev/null; then
+    if nvidia-ctk cdi list 2>/dev/null | grep -q "nvidia.com/gpu"; then
+        ok "CUDA in Containern verfügbar (podman run --device nvidia.com/gpu=all …)"
+    else
+        warn "Keine CDI-Geräte für Container gefunden"
+        hint "sudo systemctl restart nvidia-cdi-refresh.service"
+    fi
+fi
+
+section "Ergebnis"
+if (( ERRORS > 0 )); then
+    printf '  %s%d Fehler, %d Hinweise%s\n' "${RED}" "${ERRORS}" "${WARNINGS}" "${RESET}"
+    exit 1
+elif (( WARNINGS > 0 )); then
+    printf '  %sAlles Wichtige läuft, %d Hinweise%s\n' "${YELLOW}" "${WARNINGS}" "${RESET}"
+else
+    printf '  %sAlles perfekt eingerichtet!%s\n' "${GREEN}" "${RESET}"
+fi

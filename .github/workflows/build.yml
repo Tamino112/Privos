@@ -1,0 +1,124 @@
+name: Build Privos image
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+  schedule:
+    - cron: '20 4 * * *'  # täglich: neue Treiber/Fedora-Updates übernehmen
+  workflow_dispatch:
+
+env:
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  IMAGE_NAME: privos-nvidia
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck
+        run: |
+          shellcheck build_files/*.sh \
+            system_files/usr/bin/privos-gpu-check \
+            system_files/usr/libexec/privos/nvidia-flatpak-sync
+
+      - name: Python-Tests (VRAM-Wächter)
+        run: python3 -m unittest discover -s tests -v
+
+  build:
+    name: Build & Push
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      HAS_SIGNING_KEY: ${{ secrets.SIGNING_SECRET != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Speicherplatz freimachen
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - name: Tags bestimmen
+        id: meta
+        run: |
+          set -euo pipefail
+          registry="${IMAGE_REGISTRY,,}"
+          if [[ "${GITHUB_REF}" == "refs/heads/${{ github.event.repository.default_branch }}" ]]; then
+            tags="latest latest.$(date -u +%Y%m%d) $(date -u +%Y%m%d)"
+          else
+            branch="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+            tags="br-${branch,,}"
+          fi
+          echo "registry=${registry}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "first=${tags%% *}" >> "$GITHUB_OUTPUT"
+
+      - name: Image bauen
+        run: |
+          sudo podman build \
+            --pull=newer \
+            --build-arg IMAGE_NAME="${IMAGE_NAME}" \
+            --build-arg IMAGE_VENDOR="${{ github.repository_owner }}" \
+            --build-arg IMAGE_TAG="${{ steps.meta.outputs.first }}" \
+            --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
+            --label org.opencontainers.image.title="Privos" \
+            --label org.opencontainers.image.description="Modernes Linux-OS, optimiert für NVIDIA, Gaming, Game Dev und Coding" \
+            --label containers.bootc=1 \
+            -t "${IMAGE_NAME}:build" \
+            -f Containerfile .
+
+      - name: Treiber im fertigen Image prüfen
+        run: |
+          sudo podman run --rm "${IMAGE_NAME}:build" bash -euxc '
+            rpm -q kmod-nvidia nvidia-driver
+            test -x /usr/bin/privos-vram-guard
+            test -x /usr/bin/privos-gpu-check
+            systemctl is-enabled privos-vram-guard.service
+            systemctl is-enabled systemd-oomd.service
+            test -z "$(ls /usr/share/vulkan/icd.d/nouveau_icd.*.json 2>/dev/null)"
+            python3 /usr/bin/privos-vram-guard --help
+          '
+
+      - name: Bei GHCR anmelden
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pushen
+        if: github.event_name != 'pull_request'
+        id: push
+        run: |
+          set -euo pipefail
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            sudo podman tag "${IMAGE_NAME}:build" "${{ steps.meta.outputs.registry }}/${IMAGE_NAME}:${tag}"
+            sudo podman push --digestfile=/tmp/digest "${{ steps.meta.outputs.registry }}/${IMAGE_NAME}:${tag}"
+          done
+          echo "digest=$(cat /tmp/digest)" >> "$GITHUB_OUTPUT"
+
+      - name: Cosign installieren
+        if: github.event_name != 'pull_request' && env.HAS_SIGNING_KEY == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: 'v3.1.2'
+
+      - name: Image signieren
+        if: github.event_name != 'pull_request' && env.HAS_SIGNING_KEY == 'true'
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_EXPERIMENTAL: false
+        run: |
+          sudo --preserve-env=COSIGN_PRIVATE_KEY,COSIGN_EXPERIMENTAL cosign sign -y \
+            --new-bundle-format=false --use-signing-config=false \
+            --key env://COSIGN_PRIVATE_KEY \
+            --registry-username "${{ github.actor }}" --registry-password "${{ secrets.GITHUB_TOKEN }}" \
+            "${{ steps.meta.outputs.registry }}/${IMAGE_NAME}@${{ steps.push.outputs.digest }}"

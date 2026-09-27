@@ -1,0 +1,55 @@
+name: Build Privos ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image-Tag, aus dem die ISO gebaut wird (z. B. latest oder br-<branch>)"
+        required: true
+        default: latest
+
+env:
+  IMAGE_NAME: privos-nvidia
+
+jobs:
+  iso:
+    name: ISO bauen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Speicherplatz freimachen
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+        with:
+          remove-codeql: true
+
+      - name: Installer-Konfiguration vorbereiten
+        id: prep
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}:${{ inputs.tag }}"
+          sed "s|@IMAGE@|${image}|" disk_config/iso.toml > /tmp/iso.toml
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "uid=$(id -u):$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - name: ISO bauen
+        id: build
+        uses: osbuild/bootc-image-builder-action@8661cd3832544ad68c12dcde8681b13ab0f56a8d # main
+        with:
+          builder-image: quay.io/centos-bootc/bootc-image-builder:latest
+          config-file: /tmp/iso.toml
+          image: ${{ steps.prep.outputs.image }}
+          chown: ${{ steps.prep.outputs.uid }}
+          types: anaconda-iso
+          additional-args: --use-librepo=True
+
+      - name: ISO hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: privos-nvidia-${{ inputs.tag }}-iso
+          path: ${{ steps.build.outputs.output-directory }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

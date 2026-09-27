@@ -141,17 +141,26 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 
 ## 5. Roadmap
 
-| Phase | Inhalt | Ergebnis |
-|---|---|---|
-| **0 – Fundament** | Repo-Struktur, Containerfile auf NVIDIA-Basis, GitHub Actions, Image-Signierung | Image baut automatisch und bootet in einer VM |
-| **1 – NVIDIA** | Treiber, Secure Boot, Wayland, Suspend, CUDA, NVDEC, `gpu-check` | Auf echter NVIDIA-Hardware getestet, alles läuft |
-| **2 – Gaming** | Steam, Proton, Lutris, Heroic, Gamescope, MangoHud, Controller, Tweaks | Erste Spiele laufen, FPS-Benchmarks vs. Zorin/Windows |
-| **3 – Look & Feel** | Theme, Branding, Boot/Login-Screen, Layout-Presets | Sieht aus wie ein eigenes, fertiges OS |
-| **4 – Dev & GameDev** | Tools, Dev-Boxen, CUDA-Container, `pv`-Befehle | Blender/Godot/UE5 + Coding-Setup in Minuten |
-| **5 – Privos Hub + ISO** | Welcome-App, Anti-Cheat-Checker, grafischer Installer, Dual-Boot | Installierbare ISO für andere Leute |
-| **6 – Feinschliff** | Performance-Tuning, Laptop-Support, Legacy-NVIDIA-Image, Doku, Website | Erster öffentlicher Release (v1.0) |
+| Phase | Inhalt | Ergebnis | Status |
+|---|---|---|---|
+| **0 – Fundament** | Repo-Struktur, Containerfile auf NVIDIA-Basis, GitHub Actions, Image-Signierung | Image baut automatisch und bootet in einer VM | ✅ angelegt |
+| **1 – NVIDIA** | Treiber, Secure Boot, Wayland, Suspend, CUDA, NVDEC, `gpu-check`, **VRAM-Wächter** | Auf echter NVIDIA-Hardware getestet, alles läuft | 🔧 gebaut, Hardware-Test offen |
+| **2 – Gaming** | Steam, Proton, Lutris, Heroic, Gamescope, MangoHud, Controller, Tweaks | Erste Spiele laufen, FPS-Benchmarks vs. Zorin/Windows | ⏳ |
+| **3 – Look & Feel** | Theme, Branding, Boot/Login-Screen, Layout-Presets | Sieht aus wie ein eigenes, fertiges OS | ⏳ |
+| **4 – Dev & GameDev** | Tools, Dev-Boxen, CUDA-Container, `pv`-Befehle | Blender/Godot/UE5 + Coding-Setup in Minuten | ⏳ |
+| **5 – Privos Hub + ISO** | Welcome-App, Anti-Cheat-Checker, grafischer Installer, Dual-Boot | Installierbare ISO für andere Leute | ⏳ (ISO-Build existiert schon) |
+| **6 – Feinschliff** | Performance-Tuning, Laptop-Support, Legacy-NVIDIA-Image, Doku, Website | Erster öffentlicher Release (v1.0) | ⏳ |
 
----
+### Phase 1 – Hardware-Testliste
+- [ ] `privos-gpu-check` komplett grün (mit und ohne Secure Boot)
+- [ ] Standby/Aufwachen ohne Grafikfehler
+- [ ] Wayland-Sitzung flüssig, VRR/G-Sync aktiv
+- [ ] VRAM-Wächter: Warnung bei ~90 %, Notfall greift, Desktop bleibt bedienbar
+      (Test: mehrere VRAM-hungrige Apps/Spiele gleichzeitig öffnen)
+- [ ] Notfall-Taste `Strg+Alt+Umschalt+Esc` funktioniert
+- [ ] Flatpak-App (z. B. Blender) nutzt die GPU
+- [ ] CUDA im Container: `podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi`
+- [ ] Laptop: dGPU schläft im Leerlauf (`cat /sys/bus/pci/devices/*/power/runtime_status`)
 
 ## 6. Was du brauchst
 - **Echte NVIDIA-Hardware zum Testen** (VMs haben keine echte NVIDIA-GPU)
@@ -162,7 +171,7 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 ---
 
 ## 7. Offene Entscheidungen
-1. **Desktop:** KDE Plasma 6 (empfohlen) oder GNOME (Zorin-ähnlicher)?
+1. **Desktop:** KDE Plasma 6 (erstmal gewählt, weil beste NVIDIA-Unterstützung – GNOME bleibt möglich)
 2. **Welche NVIDIA-Karte hast du?** (Bestimmt, ob wir mit `nvidia-open` oder Legacy starten)
 3. **Basis:** Universal Blue selbst (volle Kontrolle) oder direkt auf Bazzite aufsetzen (schneller viel Gaming-Zeug gratis, aber weniger "eigenes" OS)?
 4. **Look:** Hast du Referenzen (Screenshots, Farben, Stil), wie Privos aussehen soll?

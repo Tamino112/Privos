@@ -1,0 +1,19 @@
+[Unit]
+Description=NVIDIA-Treiber für Flatpak-Apps synchronisieren
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/sys/module/nvidia/version
+# Nicht im Live-/Installer-System
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/libexec/privos/nvidia-flatpak-sync check
+ExecStart=/usr/libexec/privos/nvidia-flatpak-sync sync
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

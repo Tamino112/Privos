@@ -1,0 +1,21 @@
+[Unit]
+Description=Privos VRAM-Wächter (verhindert Einfrieren bei vollem Grafikspeicher)
+Documentation=file:///usr/share/doc/privos/NVIDIA.md
+ConditionPathExists=/sys/module/nvidia
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/privos-vram-guard daemon
+Restart=always
+RestartSec=2
+# Muss auch reagieren können, wenn das System unter Last steht
+Nice=-15
+IOSchedulingClass=realtime
+OOMScoreAdjust=-1000
+MemoryMin=64M
+LimitMEMLOCK=infinity
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

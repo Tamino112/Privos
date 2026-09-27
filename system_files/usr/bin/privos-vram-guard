@@ -1,0 +1,564 @@
+#!/usr/bin/python3
+"""privos-vram-guard – verhindert, dass volles NVIDIA-VRAM den PC einfriert.
+
+Wenn der Grafikspeicher voll ist, lagert der NVIDIA-Treiber in den normalen RAM aus.
+Ist der dann auch knapp, stockt alles und der Desktop friert ein. Dieser Dienst
+überwacht VRAM (über NVML) und Speicherdruck (Linux PSI) und greift ein, bevor das passiert:
+
+  1. Warnung:  VRAM über warn_percent  -> Desktop-Benachrichtigung mit dem größten Verbraucher
+  2. Notfall:  VRAM über critical_percent UND das System stockt (PSI), oder
+               VRAM komplett voll (weniger als critical_free_mib frei) für exhausted_seconds
+               -> die App mit dem meisten VRAM wird beendet (nie Desktop/Systemprozesse)
+
+Befehle:
+  privos-vram-guard status   VRAM-Belegung und Verbraucher anzeigen
+  privos-vram-guard panic    sofort die App mit dem meisten VRAM beenden (Notfall-Taste)
+  privos-vram-guard daemon   als Dienst laufen (systemd: privos-vram-guard.service)
+"""
+
+import argparse
+import configparser
+import ctypes
+import glob
+import os
+import pwd
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+
+DEFAULT_CONFIG = "/usr/share/privos/vram-guard.conf"
+CONFIG_OVERRIDES = ("/etc/privos/vram-guard.conf",)
+NVIDIA_VENDOR = "0x10de"
+DISPLAY_CLASSES = ("0x030000", "0x030200")
+MIB = 1024 * 1024
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+# --------------------------------------------------------------------------------------
+# Konfiguration
+# --------------------------------------------------------------------------------------
+
+@dataclass
+class Config:
+    mode: str = "balanced"             # notify | balanced | aggressive
+    poll_interval: float = 1.0
+    warn_percent: float = 90.0
+    warn_seconds: float = 5.0
+    warn_cooldown: float = 120.0
+    critical_percent: float = 97.0
+    critical_seconds: float = 3.0
+    critical_free_mib: int = 150
+    exhausted_seconds: float = 8.0
+    psi_full_avg10: float = 10.0
+    psi_some_avg10: float = 40.0
+    aggressive_seconds: float = 20.0
+    kill_grace_seconds: float = 3.0
+    action_cooldown: float = 15.0
+    min_victim_mib: int = 256
+    min_uid: int = 1000
+    protected: set = field(default_factory=set)
+
+
+def load_config(paths=None):
+    parser = configparser.ConfigParser()
+    parser.read(paths if paths is not None else (DEFAULT_CONFIG, *CONFIG_OVERRIDES))
+    cfg = Config()
+    if not parser.has_section("guard"):
+        return cfg
+    sec = parser["guard"]
+    for name, typ in (("poll_interval", float), ("warn_percent", float), ("warn_seconds", float),
+                      ("warn_cooldown", float), ("critical_percent", float),
+                      ("critical_seconds", float), ("critical_free_mib", int),
+                      ("exhausted_seconds", float), ("psi_full_avg10", float),
+                      ("psi_some_avg10", float), ("aggressive_seconds", float),
+                      ("kill_grace_seconds", float), ("action_cooldown", float),
+                      ("min_victim_mib", int), ("min_uid", int)):
+        if name in sec:
+            setattr(cfg, name, typ(sec[name]))
+    mode = sec.get("mode", cfg.mode).strip().lower()
+    cfg.mode = mode if mode in ("notify", "balanced", "aggressive") else "balanced"
+    cfg.protected = {p.strip() for p in sec.get("protected", "").replace("\n", ",").split(",")
+                     if p.strip()}
+    return cfg
+
+
+# --------------------------------------------------------------------------------------
+# NVML (libnvidia-ml) über ctypes – keine zusätzlichen Python-Pakete nötig
+# --------------------------------------------------------------------------------------
+
+NVML_SUCCESS = 0
+NVML_ERROR_INSUFFICIENT_SIZE = 7
+NVML_VALUE_NOT_AVAILABLE = 2**64 - 1
+
+
+class _NvmlMemory(ctypes.Structure):
+    _fields_ = [("total", ctypes.c_ulonglong),
+                ("free", ctypes.c_ulonglong),
+                ("used", ctypes.c_ulonglong)]
+
+
+class _NvmlProcessInfo(ctypes.Structure):
+    _fields_ = [("pid", ctypes.c_uint),
+                ("usedGpuMemory", ctypes.c_ulonglong),
+                ("gpuInstanceId", ctypes.c_uint),
+                ("computeInstanceId", ctypes.c_uint)]
+
+
+class NvmlError(Exception):
+    pass
+
+
+@dataclass
+class GpuSample:
+    index: int
+    name: str
+    total: int
+    used: int
+    processes: dict  # pid -> belegte Bytes
+
+    @property
+    def percent(self):
+        return 100.0 * self.used / self.total if self.total else 0.0
+
+
+class Nvml:
+    def __init__(self):
+        self.lib = None
+
+    def _check(self, ret, what):
+        if ret != NVML_SUCCESS:
+            raise NvmlError(f"{what} fehlgeschlagen (NVML-Code {ret})")
+
+    def open(self):
+        if self.lib is not None:
+            return
+        try:
+            lib = ctypes.CDLL("libnvidia-ml.so.1")
+        except OSError as exc:
+            raise NvmlError(f"libnvidia-ml.so.1 nicht ladbar: {exc}") from exc
+        self._check(lib.nvmlInit_v2(), "nvmlInit")
+        self.lib = lib
+
+    def close(self):
+        if self.lib is not None:
+            self.lib.nvmlShutdown()
+            self.lib = None
+
+    def _processes(self, func, handle):
+        count = ctypes.c_uint(0)
+        ret = func(handle, ctypes.byref(count), None)
+        if ret == NVML_SUCCESS:
+            return []
+        if ret != NVML_ERROR_INSUFFICIENT_SIZE:
+            return []
+        # Puffer mit Reserve, falls zwischen den Aufrufen Prozesse dazukommen
+        count = ctypes.c_uint(count.value + 16)
+        buf = (_NvmlProcessInfo * count.value)()
+        ret = func(handle, ctypes.byref(count), buf)
+        if ret != NVML_SUCCESS:
+            return []
+        return [(buf[i].pid, buf[i].usedGpuMemory) for i in range(count.value)]
+
+    def sample(self):
+        self.open()
+        lib = self.lib
+        count = ctypes.c_uint(0)
+        self._check(lib.nvmlDeviceGetCount_v2(ctypes.byref(count)), "nvmlDeviceGetCount")
+        gpus = []
+        for index in range(count.value):
+            handle = ctypes.c_void_p()
+            self._check(lib.nvmlDeviceGetHandleByIndex_v2(index, ctypes.byref(handle)),
+                        "nvmlDeviceGetHandleByIndex")
+            name_buf = ctypes.create_string_buffer(96)
+            lib.nvmlDeviceGetName(handle, name_buf, 96)
+            mem = _NvmlMemory()
+            self._check(lib.nvmlDeviceGetMemoryInfo(handle, ctypes.byref(mem)),
+                        "nvmlDeviceGetMemoryInfo")
+            procs = {}
+            for func in (lib.nvmlDeviceGetGraphicsRunningProcesses_v3,
+                         lib.nvmlDeviceGetComputeRunningProcesses_v3):
+                for pid, used in self._processes(func, handle):
+                    used = 0 if used == NVML_VALUE_NOT_AVAILABLE else used
+                    procs[pid] = max(procs.get(pid, 0), used)
+            gpus.append(GpuSample(index, name_buf.value.decode(errors="replace"),
+                                  mem.total, mem.used, procs))
+        return gpus
+
+
+def nvidia_runtime_states(sysfs="/sys/bus/pci/devices"):
+    """Runtime-PM-Status aller NVIDIA-GPUs (z. B. 'active' oder 'suspended')."""
+    states = []
+    for dev in glob.glob(os.path.join(sysfs, "*")):
+        try:
+            with open(os.path.join(dev, "vendor")) as f:
+                if f.read().strip() != NVIDIA_VENDOR:
+                    continue
+            with open(os.path.join(dev, "class")) as f:
+                if f.read().strip() not in DISPLAY_CLASSES:
+                    continue
+        except OSError:
+            continue
+        try:
+            with open(os.path.join(dev, "power", "runtime_status")) as f:
+                states.append(f.read().strip())
+        except OSError:
+            states.append("active")
+    return states
+
+
+# --------------------------------------------------------------------------------------
+# System-Informationen
+# --------------------------------------------------------------------------------------
+
+def read_psi(path="/proc/pressure/memory"):
+    """Liefert (some_avg10, full_avg10) in Prozent; (0, 0) wenn PSI fehlt."""
+    values = {"some": 0.0, "full": 0.0}
+    try:
+        with open(path) as f:
+            for line in f:
+                parts = line.split()
+                if parts and parts[0] in values:
+                    for item in parts[1:]:
+                        key, _, val = item.partition("=")
+                        if key == "avg10":
+                            values[parts[0]] = float(val)
+    except (OSError, ValueError):
+        pass
+    return values["some"], values["full"]
+
+
+@dataclass
+class ProcInfo:
+    pid: int
+    uid: int
+    names: set
+    display: str
+
+
+def proc_info(pid, proc="/proc"):
+    base = os.path.join(proc, str(pid))
+    try:
+        with open(os.path.join(base, "comm")) as f:
+            comm = f.read().strip()
+        uid = os.stat(base).st_uid
+    except OSError:
+        return None
+    names = {comm}
+    try:
+        exe = os.path.basename(os.readlink(os.path.join(base, "exe")))
+        names.add(exe.removesuffix(" (deleted)"))
+    except OSError:
+        pass
+    display = comm
+    try:
+        with open(os.path.join(base, "cmdline"), "rb") as f:
+            args = [a for a in f.read().split(b"\0") if a]
+        if args:
+            # Wine/Proton-Spiele: "Z:\\...\\Game.exe" -> "Game.exe"
+            first = args[0].decode(errors="replace").replace("\\", "/")
+            candidate = os.path.basename(first)
+            names.add(candidate)
+            if candidate.lower().endswith(".exe"):
+                display = candidate
+    except OSError:
+        pass
+    return ProcInfo(pid, uid, names, display)
+
+
+# --------------------------------------------------------------------------------------
+# Entscheidungslogik (rein, ohne Seiteneffekte – dadurch testbar)
+# --------------------------------------------------------------------------------------
+
+@dataclass
+class GuardState:
+    warn_since: float = None
+    critical_since: float = None
+    full_since: float = None
+    exhausted_since: float = None
+    last_warn: float = float("-inf")
+    last_action: float = float("-inf")
+
+
+def pick_victim(processes, infos, cfg, own_pid, only_uid=None):
+    """Größter VRAM-Verbraucher, der beendet werden darf, als (pid, bytes, ProcInfo)."""
+    best = None
+    for pid, used in processes.items():
+        if pid == own_pid or used < cfg.min_victim_mib * MIB:
+            continue
+        info = infos.get(pid)
+        if info is None or info.uid < cfg.min_uid:
+            continue
+        if only_uid is not None and info.uid != only_uid:
+            continue
+        if info.names & cfg.protected:
+            continue
+        if best is None or used > best[1]:
+            best = (pid, used, info)
+    return best
+
+
+def _since(previous, active, now):
+    return (previous if previous is not None else now) if active else None
+
+
+def evaluate(state, gpu_percent, free_mib, psi_some, psi_full, cfg, now):
+    """Aktualisiert den Zustand und liefert 'kill', 'warn' oder None."""
+    stalled = psi_full >= cfg.psi_full_avg10 or psi_some >= cfg.psi_some_avg10
+    critical = gpu_percent >= cfg.critical_percent
+
+    state.warn_since = _since(state.warn_since, gpu_percent >= cfg.warn_percent, now)
+    state.full_since = _since(state.full_since, critical, now)
+    state.critical_since = _since(state.critical_since, critical and stalled, now)
+    state.exhausted_since = _since(state.exhausted_since, free_mib <= cfg.critical_free_mib, now)
+
+    if cfg.mode != "notify" and now - state.last_action >= cfg.action_cooldown:
+        if state.critical_since is not None and now - state.critical_since >= cfg.critical_seconds:
+            return "kill"
+        if (state.exhausted_since is not None
+                and now - state.exhausted_since >= cfg.exhausted_seconds):
+            return "kill"
+        if (cfg.mode == "aggressive" and state.full_since is not None
+                and now - state.full_since >= cfg.aggressive_seconds):
+            return "kill"
+
+    if (state.warn_since is not None and now - state.warn_since >= cfg.warn_seconds
+            and now - state.last_warn >= cfg.warn_cooldown):
+        return "warn"
+    return None
+
+
+# --------------------------------------------------------------------------------------
+# Aktionen
+# --------------------------------------------------------------------------------------
+
+def _gvariant_str(text):
+    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def notify(title, body, urgency=1, uids=None):
+    """Desktop-Benachrichtigung an alle angemeldeten Nutzer (oder nur an `uids`)."""
+    if os.geteuid() != 0:
+        targets = [(os.getuid(), os.getgid(), os.environ.get("DBUS_SESSION_BUS_ADDRESS"))]
+    else:
+        targets = []
+        for bus in glob.glob("/run/user/*/bus"):
+            try:
+                uid = int(bus.split("/")[3])
+                gid = pwd.getpwuid(uid).pw_gid
+            except (ValueError, KeyError):
+                continue
+            if uid >= 1000 and (uids is None or uid in uids):
+                targets.append((uid, gid, f"unix:path={bus}"))
+    for uid, gid, address in targets:
+        cmd = ["gdbus", "call", "--session",
+               "--dest", "org.freedesktop.Notifications",
+               "--object-path", "/org/freedesktop/Notifications",
+               "--method", "org.freedesktop.Notifications.Notify",
+               "'Privos'", "0", "'video-display'", _gvariant_str(title), _gvariant_str(body),
+               "[]", "{'urgency': <byte %d>}" % urgency, "10000"]
+        env = dict(os.environ)
+        if address:
+            env["DBUS_SESSION_BUS_ADDRESS"] = address
+        if os.geteuid() == 0:
+            cmd = ["setpriv", f"--reuid={uid}", f"--regid={gid}", "--init-groups"] + cmd
+        try:
+            subprocess.run(cmd, env=env, timeout=5, check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
+def terminate(pid, grace):
+    """Erst höflich (SIGTERM), dann hart (SIGKILL) beenden."""
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    deadline = time.monotonic() + grace
+    while time.monotonic() < deadline:
+        if not os.path.exists(f"/proc/{pid}"):
+            return True
+        time.sleep(0.1)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    return True
+
+
+def gib(value):
+    return f"{value / 1024**3:.1f} GB"
+
+
+# --------------------------------------------------------------------------------------
+# Befehle
+# --------------------------------------------------------------------------------------
+
+def collect_infos(gpus):
+    infos = {}
+    for gpu in gpus:
+        for pid in gpu.processes:
+            if pid not in infos:
+                info = proc_info(pid)
+                if info is not None:
+                    infos[pid] = info
+    return infos
+
+
+def cmd_status(_args):
+    try:
+        gpus = Nvml().sample()
+    except NvmlError as exc:
+        print(f"NVIDIA-GPU nicht erreichbar: {exc}")
+        return 1
+    some, full = read_psi()
+    print(f"Speicherdruck (PSI avg10): some {some:.1f} %  full {full:.1f} %")
+    for gpu in gpus:
+        print(f"\nGPU {gpu.index}: {gpu.name}")
+        print(f"  VRAM: {gib(gpu.used)} / {gib(gpu.total)} ({gpu.percent:.0f} %)")
+        infos = collect_infos([gpu])
+        for pid, used in sorted(gpu.processes.items(), key=lambda p: -p[1]):
+            info = infos.get(pid)
+            name = info.display if info else "?"
+            print(f"  {used / MIB:8.0f} MiB  {pid:>7}  {name}")
+    return 0
+
+
+def cmd_panic(_args):
+    cfg = load_config()
+    try:
+        gpus = Nvml().sample()
+    except NvmlError as exc:
+        print(f"NVIDIA-GPU nicht erreichbar: {exc}")
+        return 1
+    procs = {}
+    for gpu in gpus:
+        for pid, used in gpu.processes.items():
+            procs[pid] = max(procs.get(pid, 0), used)
+    only_uid = None if os.geteuid() == 0 else os.getuid()
+    cfg.min_victim_mib = 0
+    victim = pick_victim(procs, collect_infos(gpus), cfg, os.getpid(), only_uid)
+    if victim is None:
+        notify("VRAM-Notfall", "Keine App gefunden, die beendet werden kann.")
+        print("Keine App gefunden, die beendet werden kann.")
+        return 1
+    pid, used, info = victim
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError) as exc:
+        print(f"Konnte {info.display} nicht beenden: {exc}")
+        return 1
+    msg = f"{info.display} wurde beendet ({gib(used)} VRAM freigegeben)."
+    notify("VRAM-Notfall", msg, urgency=2)
+    print(msg)
+    return 0
+
+
+def cmd_daemon(_args):
+    cfg = load_config()
+    log(f"privos-vram-guard gestartet (Modus: {cfg.mode}, Warnung ab {cfg.warn_percent:.0f} %, "
+        f"Notfall ab {cfg.critical_percent:.0f} %)")
+    try:
+        # Selbst nie ausgelagert werden – der Wächter muss auch unter Druck reagieren
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        libc.mlockall(1 | 2)  # MCL_CURRENT | MCL_FUTURE
+    except OSError:
+        pass
+
+    nvml = Nvml()
+    state = GuardState()
+    stop = False
+
+    def _stop(*_):
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+
+    while not stop:
+        now = time.monotonic()
+        states = nvidia_runtime_states()
+        if not states:
+            nvml.close()
+            time.sleep(10)
+            continue
+        if nvml.lib is None and all(s == "suspended" for s in states):
+            # GPU schläft (Laptop): nicht aufwecken, VRAM ist ohnehin leer
+            time.sleep(max(cfg.poll_interval, 2.0))
+            continue
+        try:
+            gpus = nvml.sample()
+        except NvmlError as exc:
+            log(f"NVML-Fehler: {exc}")
+            nvml.close()
+            time.sleep(5)
+            continue
+
+        if not any(gpu.processes for gpu in gpus):
+            # Keine Anwendung nutzt die GPU: NVML freigeben und kurz warten,
+            # damit sie (z. B. im Laptop) in den Stromsparmodus gehen kann
+            nvml.close()
+            state = GuardState(last_warn=state.last_warn, last_action=state.last_action)
+            time.sleep(10)
+            continue
+
+        some, full = read_psi()
+        worst = max(gpus, key=lambda g: g.percent)
+        free_mib = (worst.total - worst.used) / MIB
+        action = evaluate(state, worst.percent, free_mib, some, full, cfg, now)
+
+        if action == "kill":
+            victim = pick_victim(worst.processes, collect_infos([worst]), cfg, os.getpid())
+            state.last_action = now
+            if victim is None:
+                log(f"VRAM {worst.percent:.0f} %, System stockt – aber keine beendbare App gefunden")
+                notify("Grafikspeicher voll",
+                       "Das System stockt, aber keine App kann sicher beendet werden.", urgency=2)
+            else:
+                pid, used, info = victim
+                log(f"NOTFALL: VRAM {worst.percent:.0f} %, PSI some {some:.0f} % full {full:.0f} % "
+                    f"-> beende {info.display} (PID {pid}, {used / MIB:.0f} MiB)")
+                terminate(pid, cfg.kill_grace_seconds)
+                notify("Einfrieren verhindert",
+                       f"Der Grafikspeicher war voll und das System drohte einzufrieren. "
+                       f"{info.display} wurde beendet ({gib(used)} VRAM).",
+                       urgency=2, uids={info.uid})
+        elif action == "warn":
+            state.last_warn = now
+            top = max(worst.processes.items(), key=lambda p: p[1], default=None)
+            detail = ""
+            if top and top[1] > 0:
+                info = proc_info(top[0])
+                detail = f" Größter Verbraucher: {info.display if info else top[0]} ({gib(top[1])})."
+            log(f"Warnung: VRAM {worst.percent:.0f} % ({gib(worst.used)} / {gib(worst.total)})")
+            notify("Grafikspeicher fast voll",
+                   f"{gib(worst.used)} von {gib(worst.total)} VRAM belegt ({worst.percent:.0f} %)."
+                   f"{detail} Tipp: Texturqualität oder Auflösung im Spiel senken.")
+
+        time.sleep(cfg.poll_interval)
+
+    nvml.close()
+    log("privos-vram-guard beendet")
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="privos-vram-guard",
+                                     description="Schützt Privos vor Einfrieren bei vollem VRAM.")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("status", help="VRAM-Belegung und Verbraucher anzeigen")
+    sub.add_parser("panic", help="sofort die App mit dem meisten VRAM beenden")
+    sub.add_parser("daemon", help="als Hintergrunddienst laufen")
+    args = parser.parse_args(argv)
+    handlers = {"status": cmd_status, "panic": cmd_panic, "daemon": cmd_daemon}
+    return handlers.get(args.command or "status")(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

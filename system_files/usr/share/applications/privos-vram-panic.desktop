@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=VRAM-Notfall
+Name[en]=VRAM Emergency
+Comment=Beendet sofort die App mit dem meisten Grafikspeicher (Tastenkürzel: Strg+Alt+Umschalt+Esc)
+Comment[en]=Immediately closes the app using the most video memory (Ctrl+Alt+Shift+Esc)
+Exec=/usr/bin/privos-vram-guard panic
+Icon=process-stop
+Terminal=false
+Categories=System;
+NoDisplay=false
+X-KDE-Shortcuts=Ctrl+Alt+Shift+Esc

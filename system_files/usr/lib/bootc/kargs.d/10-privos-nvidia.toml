@@ -1,0 +1,4 @@
+# Nouveau/Nova schon im Initramfs sperren, damit nur der NVIDIA-Treiber die GPU übernimmt.
+# (modeset=1 und fbdev=1 sind bei aktuellen NVIDIA-Treibern Standard und werden nicht mehr gesetzt.)
+kargs = ["rd.driver.blacklist=nouveau", "rd.driver.blacklist=nova-core"]
+match-architectures = ["x86_64"]
