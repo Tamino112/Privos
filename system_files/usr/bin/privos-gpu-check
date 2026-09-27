@@ -87,6 +87,12 @@ fi
 if command -v privos-vram-guard >/dev/null && [[ -d /sys/module/nvidia ]]; then
     privos-vram-guard status 2>/dev/null | grep -E 'VRAM:' | sed 's/^ */  ✔ /'
 fi
+if [[ "${DXVK_CONFIG:-}" == *maxDeviceMemory* ]]; then
+    ok "VRAM-Budget für Spiele aktiv (${DXVK_CONFIG##*maxDeviceMemory = } MiB, Rest bleibt für den Desktop)"
+elif [[ -r /run/privos/vram-budget.env ]]; then
+    warn "VRAM-Budget ist bestimmt, aber in dieser Sitzung nicht aktiv"
+    hint "Einmal ab- und wieder anmelden"
+fi
 
 section "Desktop & Grafik-APIs"
 case "${XDG_SESSION_TYPE:-}" in

@@ -6,14 +6,18 @@ Ist der dann auch knapp, stockt alles und der Desktop friert ein. Dieser Dienst
 überwacht VRAM (über NVML) und Speicherdruck (Linux PSI) und greift ein, bevor das passiert:
 
   1. Warnung:  VRAM über warn_percent  -> Desktop-Benachrichtigung mit dem größten Verbraucher
-  2. Notfall:  VRAM über critical_percent UND das System stockt (PSI), oder
-               VRAM komplett voll (weniger als critical_free_mib frei) für exhausted_seconds
+  2. Notfall:  VRAM über critical_percent UND das System stockt wirklich
+               (Speicherdruck laut PSI oder der Desktop reagiert nicht mehr)
                -> die App mit dem meisten VRAM wird beendet (nie Desktop/Systemprozesse)
+               Volles VRAM allein ist kein Notfall: Spiele füllen es absichtlich bis zum Rand.
+  3. Spiel-Tipp: startet ein Spiel, während andere Apps viel VRAM belegen,
+               nennt eine Benachrichtigung diese Apps (es wird nichts geschlossen)
 
 Befehle:
   privos-vram-guard status   VRAM-Belegung und Verbraucher anzeigen
   privos-vram-guard panic    sofort die App mit dem meisten VRAM beenden (Notfall-Taste)
   privos-vram-guard daemon   als Dienst laufen (systemd: privos-vram-guard.service)
+  privos-vram-guard budget   VRAM-Budget für Spiele bestimmen (privos-vram-budget.service)
 """
 
 import argparse
@@ -29,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 
 DEFAULT_CONFIG = "/usr/share/privos/vram-guard.conf"
+BUDGET_FILE = "/run/privos/vram-budget.env"
 CONFIG_OVERRIDES = ("/etc/privos/vram-guard.conf",)
 NVIDIA_VENDOR = "0x10de"
 DISPLAY_CLASSES = ("0x030000", "0x030200")
@@ -61,7 +66,15 @@ class Config:
     action_cooldown: float = 15.0
     min_victim_mib: int = 256
     min_uid: int = 1000
+    desktop_check: bool = True
+    desktop_timeout: float = 2.0
+    game_hint: bool = True
+    game_min_mib: int = 1024
+    game_hint_min_mib: int = 400
     protected: set = field(default_factory=set)
+    budget: bool = True
+    budget_reserve_mib: int = 1024
+    budget_min_vram_mib: int = 4096
 
 
 def load_config(paths=None):
@@ -77,13 +90,26 @@ def load_config(paths=None):
                       ("exhausted_seconds", float), ("psi_full_avg10", float),
                       ("psi_some_avg10", float), ("aggressive_seconds", float),
                       ("kill_grace_seconds", float), ("action_cooldown", float),
-                      ("min_victim_mib", int), ("min_uid", int)):
+                      ("min_victim_mib", int), ("min_uid", int),
+                      ("desktop_timeout", float), ("game_min_mib", int),
+                      ("game_hint_min_mib", int)):
         if name in sec:
             setattr(cfg, name, typ(sec[name]))
+    for name in ("desktop_check", "game_hint"):
+        if name in sec:
+            setattr(cfg, name, sec.getboolean(name))
     mode = sec.get("mode", cfg.mode).strip().lower()
     cfg.mode = mode if mode in ("notify", "balanced", "aggressive") else "balanced"
     cfg.protected = {p.strip() for p in sec.get("protected", "").replace("\n", ",").split(",")
                      if p.strip()}
+    if parser.has_section("budget"):
+        bud = parser["budget"]
+        if "enabled" in bud:
+            cfg.budget = bud.getboolean("enabled")
+        for name, key in (("budget_reserve_mib", "reserve_mib"),
+                          ("budget_min_vram_mib", "min_vram_mib")):
+            if key in bud:
+                setattr(cfg, name, int(bud[key]))
     return cfg
 
 
@@ -232,12 +258,23 @@ def read_psi(path="/proc/pressure/memory"):
     return values["some"], values["full"]
 
 
+# Wine-/Proton-Hilfsprozesse und Launcher sind keine Spiele
+NON_GAME_EXES = {"steam.exe", "steamwebhelper.exe", "explorer.exe", "services.exe",
+                 "winedevice.exe", "plugplay.exe", "svchost.exe", "rpcss.exe", "conhost.exe",
+                 "tabtip.exe", "epicgameslauncher.exe", "epicwebhelper.exe"}
+
+
+# Gehören zum Spielen dazu und werden im Spiel-Tipp nicht genannt
+GAME_HINT_SKIP = {"steam", "steamwebhelper", "gamescope", "mangohud", "obs", "obs-studio"}
+
+
 @dataclass
 class ProcInfo:
     pid: int
     uid: int
     names: set
     display: str
+    game: bool = False
 
 
 def proc_info(pid, proc="/proc"):
@@ -255,6 +292,7 @@ def proc_info(pid, proc="/proc"):
     except OSError:
         pass
     display = comm
+    game = False
     try:
         with open(os.path.join(base, "cmdline"), "rb") as f:
             args = [a for a in f.read().split(b"\0") if a]
@@ -265,9 +303,12 @@ def proc_info(pid, proc="/proc"):
             names.add(candidate)
             if candidate.lower().endswith(".exe"):
                 display = candidate
+                game = candidate.lower() not in NON_GAME_EXES
+            # Native Steam-Spiele liegen unter steamapps/common
+            game = game or "/steamapps/common/" in first.lower()
     except OSError:
         pass
-    return ProcInfo(pid, uid, names, display)
+    return ProcInfo(pid, uid, names, display, game)
 
 
 # --------------------------------------------------------------------------------------
@@ -306,25 +347,31 @@ def _since(previous, active, now):
     return (previous if previous is not None else now) if active else None
 
 
-def evaluate(state, gpu_percent, free_mib, psi_some, psi_full, cfg, now):
-    """Aktualisiert den Zustand und liefert 'kill', 'warn' oder None."""
+def evaluate(state, gpu_percent, free_mib, psi_some, psi_full, cfg, now, desktop_hung=False):
+    """Aktualisiert den Zustand und liefert 'kill', 'warn' oder None.
+
+    Volles VRAM allein führt (außer im Modus 'aggressive') nie zum Beenden: Spiele füllen
+    den Speicher absichtlich, und Proton lagert bei Bedarf in den RAM aus. Eingegriffen wird
+    erst, wenn das System dabei wirklich stockt (PSI) oder der Desktop nicht mehr reagiert.
+    """
     stalled = psi_full >= cfg.psi_full_avg10 or psi_some >= cfg.psi_some_avg10
-    critical = gpu_percent >= cfg.critical_percent
+    critical = gpu_percent >= cfg.critical_percent or free_mib <= cfg.critical_free_mib
 
     state.warn_since = _since(state.warn_since, gpu_percent >= cfg.warn_percent, now)
     state.full_since = _since(state.full_since, critical, now)
-    state.critical_since = _since(state.critical_since, critical and stalled, now)
+    state.critical_since = _since(state.critical_since,
+                                  critical and (stalled or desktop_hung), now)
     state.exhausted_since = _since(state.exhausted_since, free_mib <= cfg.critical_free_mib, now)
 
     if cfg.mode != "notify" and now - state.last_action >= cfg.action_cooldown:
         if state.critical_since is not None and now - state.critical_since >= cfg.critical_seconds:
             return "kill"
-        if (state.exhausted_since is not None
-                and now - state.exhausted_since >= cfg.exhausted_seconds):
-            return "kill"
-        if (cfg.mode == "aggressive" and state.full_since is not None
-                and now - state.full_since >= cfg.aggressive_seconds):
-            return "kill"
+        if cfg.mode == "aggressive":
+            if (state.exhausted_since is not None
+                    and now - state.exhausted_since >= cfg.exhausted_seconds):
+                return "kill"
+            if state.full_since is not None and now - state.full_since >= cfg.aggressive_seconds:
+                return "kill"
 
     if (state.warn_since is not None and now - state.warn_since >= cfg.warn_seconds
             and now - state.last_warn >= cfg.warn_cooldown):
@@ -340,37 +387,85 @@ def _gvariant_str(text):
     return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
+def session_buses(uids=None):
+    """(uid, gid, D-Bus-Adresse) der angemeldeten Nutzer (oder nur von `uids`)."""
+    if os.geteuid() != 0:
+        return [(os.getuid(), os.getgid(), os.environ.get("DBUS_SESSION_BUS_ADDRESS"))]
+    targets = []
+    for bus in glob.glob("/run/user/*/bus"):
+        try:
+            uid = int(bus.split("/")[3])
+            gid = pwd.getpwuid(uid).pw_gid
+        except (ValueError, KeyError):
+            continue
+        if uid >= 1000 and (uids is None or uid in uids):
+            targets.append((uid, gid, f"unix:path={bus}"))
+    return targets
+
+
+def _session_run(uid, gid, address, cmd, timeout):
+    env = dict(os.environ, LC_ALL="C")
+    if address:
+        env["DBUS_SESSION_BUS_ADDRESS"] = address
+    if os.geteuid() == 0:
+        cmd = ["setpriv", f"--reuid={uid}", f"--regid={gid}", "--init-groups"] + cmd
+    return subprocess.run(cmd, env=env, timeout=timeout, check=False,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
+
 def notify(title, body, urgency=1, uids=None):
     """Desktop-Benachrichtigung an alle angemeldeten Nutzer (oder nur an `uids`)."""
-    if os.geteuid() != 0:
-        targets = [(os.getuid(), os.getgid(), os.environ.get("DBUS_SESSION_BUS_ADDRESS"))]
-    else:
-        targets = []
-        for bus in glob.glob("/run/user/*/bus"):
-            try:
-                uid = int(bus.split("/")[3])
-                gid = pwd.getpwuid(uid).pw_gid
-            except (ValueError, KeyError):
-                continue
-            if uid >= 1000 and (uids is None or uid in uids):
-                targets.append((uid, gid, f"unix:path={bus}"))
-    for uid, gid, address in targets:
+    for uid, gid, address in session_buses(uids):
         cmd = ["gdbus", "call", "--session",
                "--dest", "org.freedesktop.Notifications",
                "--object-path", "/org/freedesktop/Notifications",
                "--method", "org.freedesktop.Notifications.Notify",
                "'Privos'", "0", "'video-display'", _gvariant_str(title), _gvariant_str(body),
                "[]", "{'urgency': <byte %d>}" % urgency, "10000"]
-        env = dict(os.environ)
-        if address:
-            env["DBUS_SESSION_BUS_ADDRESS"] = address
-        if os.geteuid() == 0:
-            cmd = ["setpriv", f"--reuid={uid}", f"--regid={gid}", "--init-groups"] + cmd
         try:
-            subprocess.run(cmd, env=env, timeout=5, check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _session_run(uid, gid, address, cmd, timeout=5)
         except (OSError, subprocess.TimeoutExpired):
             pass
+
+
+def desktop_hung(timeout):
+    """True, wenn der Desktop (KWin) eines angemeldeten Nutzers nicht mehr antwortet.
+
+    Bei vollem VRAM hängt oft nicht das Spiel, sondern der Compositor. Das zeigt PSI nicht,
+    eine D-Bus-Anfrage an KWin aber schon. Abgefragt wird eine echte Eigenschaft, weil KWins
+    Hauptschleife sie beantworten muss (ein bloßer Peer.Ping käme auch von einem hängenden
+    KWin zurück). Läuft KWin gar nicht, zählt das nicht als hängend.
+    """
+    for uid, gid, address in session_buses():
+        cmd = ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
+               "--object-path", "/VirtualDesktopManager",
+               "--method", "org.freedesktop.DBus.Properties.Get",
+               "--timeout", str(max(1, int(timeout))),
+               "org.kde.KWin.VirtualDesktopManager", "count"]
+        try:
+            result = _session_run(uid, gid, address, cmd, timeout=timeout + 3)
+        except subprocess.TimeoutExpired:
+            return True
+        except OSError:
+            continue
+        if result.returncode != 0 and "Timeout was reached" in (result.stderr or ""):
+            return True
+    return False
+
+
+def game_hint(game, processes, infos, cfg):
+    """Andere Apps, die beim Spielstart viel VRAM belegen, als [(Name, Bytes)] – oder []."""
+    others = []
+    for pid, used in processes.items():
+        info = infos.get(pid)
+        if (pid == game or info is None or info.game or info.uid < cfg.min_uid
+                or info.names & cfg.protected or info.names & GAME_HINT_SKIP
+                or used < 100 * MIB):
+            continue
+        others.append((info.display, used))
+    if sum(used for _, used in others) < cfg.game_hint_min_mib * MIB:
+        return []
+    return sorted(others, key=lambda o: -o[1])
 
 
 def terminate(pid, grace):
@@ -410,6 +505,68 @@ def collect_infos(gpus):
     return infos
 
 
+def check_game_start(gpus, cfg, seen_games):
+    """Spiel-Tipp: nennt Apps, die beim Start eines Spiels unnötig VRAM belegen."""
+    procs = {}
+    for gpu in gpus:
+        for pid, used in gpu.processes.items():
+            procs[pid] = max(procs.get(pid, 0), used)
+    seen_games &= set(procs)
+    new = [pid for pid, used in procs.items()
+           if pid not in seen_games and used >= cfg.game_min_mib * MIB]
+    if not new:
+        return
+    infos = collect_infos(gpus)
+    for pid in new:
+        seen_games.add(pid)
+        info = infos.get(pid)
+        if info is None or not info.game:
+            continue
+        others = game_hint(pid, procs, infos, cfg)
+        if not others:
+            continue
+        names = ", ".join(f"{name} ({gib(used)})" for name, used in others[:4])
+        log(f"Spiel-Tipp für {info.display}: {names}")
+        notify(f"Mehr VRAM für {info.display}",
+               f"Diese Apps belegen gerade Grafikspeicher: {names}. Wenn du sie schließt "
+               f"(oder dort die Hardwarebeschleunigung ausschaltest), hat das Spiel mehr Platz.",
+               uids={info.uid})
+
+
+def budget_mib(total_mib, cfg):
+    """VRAM (MiB), das Spielen gemeldet wird: echtes VRAM minus Reserve für den Desktop."""
+    if not cfg.budget or total_mib < cfg.budget_min_vram_mib:
+        return None
+    return int(total_mib - cfg.budget_reserve_mib)
+
+
+def cmd_budget(args):
+    """Schreibt das VRAM-Budget für Spiele (wird beim Login als DXVK_CONFIG übernommen)."""
+    cfg = load_config()
+    try:
+        os.unlink(args.output)
+    except FileNotFoundError:
+        pass
+    try:
+        gpus = Nvml().sample()
+    except NvmlError as exc:
+        print(f"NVIDIA-GPU nicht erreichbar, kein VRAM-Budget: {exc}")
+        return 0
+    if not gpus:
+        return 0
+    total_mib = max(gpu.total for gpu in gpus) // MIB
+    budget = budget_mib(total_mib, cfg)
+    if budget is None:
+        print(f"VRAM-Budget aus ({total_mib} MiB VRAM)")
+        return 0
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    with open(args.output, "w") as f:
+        f.write(f"PRIVOS_VRAM_BUDGET_MIB={budget}\n")
+    print(f"VRAM-Budget für Spiele: {budget} von {total_mib} MiB "
+          f"({cfg.budget_reserve_mib} MiB bleiben für den Desktop)")
+    return 0
+
+
 def cmd_status(_args):
     try:
         gpus = Nvml().sample()
@@ -418,6 +575,9 @@ def cmd_status(_args):
         return 1
     some, full = read_psi()
     print(f"Speicherdruck (PSI avg10): some {some:.1f} %  full {full:.1f} %")
+    dxvk = os.environ.get("DXVK_CONFIG", "")
+    if "maxDeviceMemory" in dxvk:
+        print(f"VRAM-Budget für Spiele: {dxvk}")
     for gpu in gpus:
         print(f"\nGPU {gpu.index}: {gpu.name}")
         print(f"  VRAM: {gib(gpu.used)} / {gib(gpu.total)} ({gpu.percent:.0f} %)")
@@ -472,6 +632,8 @@ def cmd_daemon(_args):
 
     nvml = Nvml()
     state = GuardState()
+    seen_games = set()   # Apps, die für den Spiel-Tipp schon geprüft wurden
+    warned = set()       # Apps, für die schon eine VRAM-Warnung kam
     stop = False
 
     def _stop(*_):
@@ -508,10 +670,19 @@ def cmd_daemon(_args):
             time.sleep(10)
             continue
 
+        if cfg.game_hint:
+            check_game_start(gpus, cfg, seen_games)
+
         some, full = read_psi()
         worst = max(gpus, key=lambda g: g.percent)
         free_mib = (worst.total - worst.used) / MIB
-        action = evaluate(state, worst.percent, free_mib, some, full, cfg, now)
+        hung = False
+        if (cfg.desktop_check and cfg.mode != "notify"
+                and (worst.percent >= cfg.critical_percent or free_mib <= cfg.critical_free_mib)):
+            hung = desktop_hung(cfg.desktop_timeout)
+            if hung:
+                log(f"Desktop reagiert nicht (VRAM {worst.percent:.0f} %)")
+        action = evaluate(state, worst.percent, free_mib, some, full, cfg, now, hung)
 
         if action == "kill":
             victim = pick_victim(worst.processes, collect_infos([worst]), cfg, os.getpid())
@@ -522,7 +693,8 @@ def cmd_daemon(_args):
                        "Das System stockt, aber keine App kann sicher beendet werden.", urgency=2)
             else:
                 pid, used, info = victim
-                log(f"NOTFALL: VRAM {worst.percent:.0f} %, PSI some {some:.0f} % full {full:.0f} % "
+                reason = "Desktop reagiert nicht" if hung else f"PSI some {some:.0f} % full {full:.0f} %"
+                log(f"NOTFALL: VRAM {worst.percent:.0f} %, {reason} "
                     f"-> beende {info.display} (PID {pid}, {used / MIB:.0f} MiB)")
                 terminate(pid, cfg.kill_grace_seconds)
                 notify("Einfrieren verhindert",
@@ -532,14 +704,19 @@ def cmd_daemon(_args):
         elif action == "warn":
             state.last_warn = now
             top = max(worst.processes.items(), key=lambda p: p[1], default=None)
-            detail = ""
-            if top and top[1] > 0:
-                info = proc_info(top[0])
-                detail = f" Größter Verbraucher: {info.display if info else top[0]} ({gib(top[1])})."
             log(f"Warnung: VRAM {worst.percent:.0f} % ({gib(worst.used)} / {gib(worst.total)})")
-            notify("Grafikspeicher fast voll",
-                   f"{gib(worst.used)} von {gib(worst.total)} VRAM belegt ({worst.percent:.0f} %)."
-                   f"{detail} Tipp: Texturqualität oder Auflösung im Spiel senken.")
+            # Pro App nur einmal warnen: ein Spiel, das VRAM ausreizt, soll nicht alle
+            # zwei Minuten eine Benachrichtigung über das Spielbild legen
+            if top is None or top[0] not in warned:
+                detail = ""
+                if top and top[1] > 0:
+                    warned.add(top[0])
+                    info = proc_info(top[0])
+                    detail = f" Größter Verbraucher: {info.display if info else top[0]} ({gib(top[1])})."
+                notify("Grafikspeicher fast voll",
+                       f"{gib(worst.used)} von {gib(worst.total)} VRAM belegt ({worst.percent:.0f} %)."
+                       f"{detail} Tipp: Texturqualität im Spiel senken.")
+        warned &= set(worst.processes)
 
         time.sleep(cfg.poll_interval)
 
@@ -555,8 +732,11 @@ def main(argv=None):
     sub.add_parser("status", help="VRAM-Belegung und Verbraucher anzeigen")
     sub.add_parser("panic", help="sofort die App mit dem meisten VRAM beenden")
     sub.add_parser("daemon", help="als Hintergrunddienst laufen")
+    budget = sub.add_parser("budget", help="VRAM-Budget für Spiele bestimmen")
+    budget.add_argument("--output", default=BUDGET_FILE)
     args = parser.parse_args(argv)
-    handlers = {"status": cmd_status, "panic": cmd_panic, "daemon": cmd_daemon}
+    handlers = {"status": cmd_status, "panic": cmd_panic, "daemon": cmd_daemon,
+                "budget": cmd_budget}
     return handlers.get(args.command or "status")(args)
 
 

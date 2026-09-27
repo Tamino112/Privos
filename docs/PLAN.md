@@ -157,6 +157,10 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 - [ ] Wayland-Sitzung flüssig, VRR/G-Sync aktiv
 - [ ] VRAM-Wächter: Warnung bei ~90 %, Notfall greift, Desktop bleibt bedienbar
       (Test: mehrere VRAM-hungrige Apps/Spiele gleichzeitig öffnen)
+- [ ] Volles VRAM ohne Hängen beendet das Spiel NICHT (Test: ARK Survival Ascended, 8-GB-Karte, 1 h spielen)
+- [ ] VRAM-Budget aktiv: `privos-gpu-check` zeigt es, und ASA bleibt unter dem Budget (`privos-vram-guard status`)
+- [ ] Spiel-Tipp erscheint beim Spielstart, wenn Firefox/Discord offen sind
+- [ ] KWin braucht mit dem NVIDIA-Profil spürbar weniger VRAM (vorher/nachher `privos-vram-guard status`)
 - [ ] Notfall-Taste `Strg+Alt+Umschalt+Esc` funktioniert
 - [ ] Flatpak-App (z. B. Blender) nutzt die GPU
 - [ ] CUDA im Container: `podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi`

@@ -65,10 +65,15 @@ Der Nutzer spricht Deutsch. Antworten, Doku und UI-Texte sind deshalb auf Deutsc
 
 - Liest über NVML (ctypes auf `libnvidia-ml.so.1`), wie voll der VRAM ist und welche Prozesse ihn belegen.
 - Kombiniert das mit dem Speicherdruck aus PSI (`/proc/pressure/memory`).
-- **Warnung**: ab 90 % VRAM für 5 s, als Desktop-Benachrichtigung.
-- **Notfall** (beendet den größten VRAM-Verbraucher, zuerst mit SIGTERM, dann mit SIGKILL). Auslöser:
-  - VRAM ≥97 % und das System stockt seit 3 s
-  - oder weniger als 150 MiB frei für 8 s
+- **Warnung**: ab 90 % VRAM für 5 s, als Desktop-Benachrichtigung, einmal pro App.
+- **Notfall** (beendet den größten VRAM-Verbraucher, zuerst mit SIGTERM, dann mit SIGKILL).
+  - Auslöser: VRAM ≥97 % (oder weniger als 150 MiB frei) **und** das System hängt seit 3 s.
+  - „Hängt“ heißt: PSI-Speicherdruck, oder KWin antwortet nicht auf eine D-Bus-Anfrage.
+  - Volles VRAM allein beendet nichts: Spiele wie ARK Survival Ascended füllen 8-GB-Karten absichtlich. Nur im Modus `aggressive` wird dann trotzdem eingegriffen.
+- **Spiel-Tipp**: Startet ein Spiel (.exe oder `steamapps/common`), nennt eine Benachrichtigung andere Apps mit viel VRAM. Geschlossen wird nichts.
+- **VRAM-Budget** (`privos-vram-budget.service` + User-Environment-Generator): setzt beim Login `DXVK_CONFIG=dxgi.maxDeviceMemory = VRAM − 1 GB`. Proton-Spiele (auch DX12) sehen dadurch weniger VRAM, und der Desktop behält Platz.
+- **KWin-Profil**: `/etc/nvidia/nvidia-application-profiles-rc.d/50-privos-desktop-vram.json` setzt `GLVidHeapReuseRatio=0`. Das muss in `/etc` liegen, weil der Treiber kein `.d`-Verzeichnis unter `/usr` liest.
+- **RAM-Auslagerung wie bei Windows** gibt es unter Linux mit NVIDIA nur eingeschränkt. Siehe den Abschnitt dazu in `NVIDIA.md`.
 - **Geschützt** sind Desktop-Prozesse (kwin, plasmashell, Xwayland, gamescope, pipewire …) und Systemprozesse (UID < 1000).
 - **Modi** in `/etc/privos/vram-guard.conf`: `notify`, `balanced` (Standard), `aggressive`. Die Vorlage liegt in `usr/share/privos/vram-guard.conf`.
 - **Notfall-Taste**: `Strg+Alt+Umschalt+Esc` (`privos-vram-guard panic`).
@@ -148,6 +153,7 @@ Der Nutzer spricht Deutsch. Antworten, Doku und UI-Texte sind deshalb auf Deutsc
 - **Image lokal bauen** (nur unter Linux mit podman, braucht viel Platz):
   `podman build -t localhost/privos-nvidia:test .`, danach `podman run --rm -it localhost/privos-nvidia:test bash` zum Nachsehen.
   - Unter Windows: Code bearbeiten und pushen reicht, GitHub baut in der Cloud.
+- **macOS**: Dort schlägt `test_proc_info_of_self` fehl, weil es kein `/proc` gibt. Unter Linux (CI) läuft der Test.
 - **Neue Dateien für das System** kommen nach `system_files/` (landen 1:1 im Image). Neue Build-Schritte kommen als `build_files/NN-name.sh` (werden der Reihe nach ausgeführt).
 - **In `/usr` ablegen**: Nur `/usr` ist Teil des Images. `/etc` ist nur Vorgabe, `/var` bleibt beim Update unverändert.
 - **Neue Tools im Workflow prüfen**: Ergänzungen in `.github/workflows/build.yml` im Schritt „Verify image“ mit prüfen lassen.

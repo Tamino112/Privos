@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+# Übernimmt das VRAM-Budget (privos-vram-budget.service) beim Login als DXVK_CONFIG,
+# damit Proton-Spiele weniger VRAM belegen, als die Karte hat. Eigene DXVK_CONFIG-Werte
+# aus ~/.config/environment.d bleiben erhalten; ein eigenes maxDeviceMemory hat Vorrang.
+BUDGET_FILE="${PRIVOS_VRAM_BUDGET_FILE:-/run/privos/vram-budget.env}"
+[[ -r "${BUDGET_FILE}" ]] || exit 0
+budget="$(sed -n 's/^PRIVOS_VRAM_BUDGET_MIB=\([0-9][0-9]*\)$/\1/p' "${BUDGET_FILE}")"
+[[ -n "${budget}" ]] || exit 0
+[[ "${DXVK_CONFIG:-}" == *maxDeviceMemory* ]] && exit 0
+echo "DXVK_CONFIG=${DXVK_CONFIG:+${DXVK_CONFIG}; }dxgi.maxDeviceMemory = ${budget}"

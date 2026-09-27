@@ -22,4 +22,5 @@ systemctl enable nvidia-powerd.service || true
 
 # Privos-Dienste
 systemctl enable privos-vram-guard.service
+systemctl enable privos-vram-budget.service
 systemctl enable privos-nvidia-flatpak-sync.service
