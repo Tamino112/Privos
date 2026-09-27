@@ -3,12 +3,15 @@
 import importlib.machinery
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "system_files", "usr", "bin", "privos-vram-guard")
+GENERATOR = os.path.join(ROOT, "system_files", "usr", "lib", "systemd",
+                         "user-environment-generators", "60-privos-vram-budget")
 DEFAULT_CONFIG = os.path.join(ROOT, "system_files", "usr", "share", "privos", "vram-guard.conf")
 
 sys.dont_write_bytecode = True
@@ -68,10 +71,42 @@ class EvaluateTests(unittest.TestCase):
                    (4, 98.0, 200, 60.0, 30.0)]
         self.assertNotIn("kill", self.run_series(cfg(), samples))
 
-    def test_exhausted_vram_kills_even_without_psi(self):
-        samples = [(t, 99.5, 40, 0.0, 0.0) for t in range(12)]
+    def test_exhausted_vram_alone_is_tolerated_in_balanced_mode(self):
+        # Spiel mit 8-GB-Karte: VRAM randvoll, aber System und Desktop laufen -> nie beenden
+        samples = [(t, 99.5, 40, 0.0, 0.0) for t in range(120)]
         results = self.run_series(cfg(), samples)
+        self.assertNotIn("kill", results)
+        self.assertEqual(results.count("warn"), 1)
+
+    def test_exhausted_vram_kills_in_aggressive_mode(self):
+        samples = [(t, 99.5, 40, 0.0, 0.0) for t in range(12)]
+        results = self.run_series(cfg(mode="aggressive"), samples)
         self.assertEqual(results.index("kill"), 8)
+
+    def run_hung_series(self, config, samples):
+        """samples: Liste von (zeit, vram_prozent, frei_mib, desktop_hängt)."""
+        state = vg.GuardState()
+        results = []
+        for now, percent, free, hung in samples:
+            action = vg.evaluate(state, percent, free, 0.0, 0.0, config, now, hung)
+            if action == "kill":
+                state.last_action = now
+            results.append(action)
+        return results
+
+    def test_hung_desktop_with_full_vram_kills(self):
+        samples = [(t, 99.0, 80, True) for t in range(10)]
+        self.assertEqual(self.run_hung_series(cfg(), samples).index("kill"), 3)
+
+    def test_hung_desktop_with_free_vram_is_ignored(self):
+        # Hängt der Desktop aus anderen Gründen, ist das kein VRAM-Problem
+        samples = [(t, 70.0, 2400, True) for t in range(10)]
+        self.assertNotIn("kill", self.run_hung_series(cfg(), samples))
+
+    def test_short_desktop_hang_is_ignored(self):
+        samples = [(0, 99.0, 80, True), (1, 99.0, 80, True), (2, 99.0, 80, False),
+                   (3, 99.0, 80, True), (4, 99.0, 80, True)]
+        self.assertNotIn("kill", self.run_hung_series(cfg(), samples))
 
     def test_notify_mode_never_kills(self):
         samples = [(t, 99.9, 10, 90.0, 80.0) for t in range(60)]
@@ -127,6 +162,88 @@ class PickVictimTests(unittest.TestCase):
         self.assertEqual(pid, 6)
 
 
+class GameHintTests(unittest.TestCase):
+    def info(self, pid, *names, game=False, uid=1000):
+        return vg.ProcInfo(pid, uid, set(names), names[0], game)
+
+    def test_lists_other_apps_sorted(self):
+        procs = {1: 6000 * MIB, 2: 700 * MIB, 3: 300 * MIB, 4: 500 * MIB, 5: 400 * MIB}
+        infos = {1: self.info(1, "ArkAscended.exe", game=True),
+                 2: self.info(2, "firefox"),
+                 3: self.info(3, "Discord"),
+                 4: self.info(4, "kwin_wayland"),       # Desktop: nie nennen
+                 5: self.info(5, "steamwebhelper")}     # gehört zum Spielen
+        hint = vg.game_hint(1, procs, infos, cfg())
+        self.assertEqual(hint, [("firefox", 700 * MIB), ("Discord", 300 * MIB)])
+
+    def test_no_hint_when_others_use_little(self):
+        procs = {1: 6000 * MIB, 2: 250 * MIB}
+        infos = {1: self.info(1, "Game.exe", game=True), 2: self.info(2, "firefox")}
+        self.assertEqual(vg.game_hint(1, procs, infos, cfg()), [])
+
+    def test_check_game_start_hints_once(self):
+        gpu = vg.GpuSample(0, "RTX", 8192 * MIB, 7500 * MIB,
+                           {os.getpid(): 5000 * MIB})
+        sent = []
+        original_collect, original_notify = vg.collect_infos, vg.notify
+        vg.collect_infos = lambda gpus: {
+            os.getpid(): self.info(os.getpid(), "ArkAscended.exe", game=True),
+            99: self.info(99, "firefox")}
+        vg.notify = lambda title, body, **kw: sent.append(title)
+        try:
+            gpu.processes[99] = 900 * MIB
+            seen = set()
+            for _ in range(3):
+                vg.check_game_start([gpu], cfg(), seen)
+        finally:
+            vg.collect_infos, vg.notify = original_collect, original_notify
+        self.assertEqual(sent, ["Mehr VRAM für ArkAscended.exe"])
+
+
+class BudgetTests(unittest.TestCase):
+    def test_budget_reserves_vram_for_desktop(self):
+        self.assertEqual(vg.budget_mib(8192, cfg()), 7168)
+        self.assertEqual(vg.budget_mib(24576, cfg()), 23552)
+
+    def test_no_budget_for_small_cards_or_when_disabled(self):
+        self.assertIsNone(vg.budget_mib(4000, cfg()))
+        self.assertIsNone(vg.budget_mib(8192, cfg(budget=False)))
+
+    def test_budget_config_section(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as f:
+            f.write("[budget]\nreserve_mib = 512\n")
+        try:
+            config = vg.load_config([DEFAULT_CONFIG, f.name])
+            self.assertEqual(vg.budget_mib(8192, config), 7680)
+        finally:
+            os.unlink(f.name)
+
+    def run_generator(self, budget_text, dxvk_config=None):
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(budget_text)
+        env = {"PATH": os.environ["PATH"], "PRIVOS_VRAM_BUDGET_FILE": f.name}
+        if dxvk_config is not None:
+            env["DXVK_CONFIG"] = dxvk_config
+        try:
+            return subprocess.run(["bash", GENERATOR], env=env, capture_output=True,
+                                  text=True, check=True).stdout
+        finally:
+            os.unlink(f.name)
+
+    def test_generator_sets_dxvk_config(self):
+        self.assertEqual(self.run_generator("PRIVOS_VRAM_BUDGET_MIB=7168\n"),
+                         "DXVK_CONFIG=dxgi.maxDeviceMemory = 7168\n")
+
+    def test_generator_keeps_user_dxvk_config(self):
+        self.assertEqual(self.run_generator("PRIVOS_VRAM_BUDGET_MIB=7168\n", "dxgi.syncInterval = 1"),
+                         "DXVK_CONFIG=dxgi.syncInterval = 1; dxgi.maxDeviceMemory = 7168\n")
+        self.assertEqual(self.run_generator("PRIVOS_VRAM_BUDGET_MIB=7168\n",
+                                            "dxgi.maxDeviceMemory = 6000"), "")
+
+    def test_generator_ignores_garbage(self):
+        self.assertEqual(self.run_generator("PRIVOS_VRAM_BUDGET_MIB=rm -rf\n"), "")
+
+
 class SystemReadTests(unittest.TestCase):
     def test_read_psi(self):
         with tempfile.NamedTemporaryFile("w", delete=False) as f:
@@ -155,6 +272,23 @@ class SystemReadTests(unittest.TestCase):
                         fh.write(value + "\n")
             self.assertEqual(vg.nvidia_runtime_states(sysfs), ["suspended"])
 
+    def test_proc_info_detects_games(self):
+        with tempfile.TemporaryDirectory() as proc:
+            cases = {
+                1: (b"Z:\\home\\u\\.steam\\steamapps\\common\\ARK\\ArkAscended.exe\0", True),
+                2: (b"C:\\windows\\system32\\winedevice.exe\0", False),
+                3: (b"/home/u/.steam/steamapps/common/Game/game.x86_64\0-fullscreen\0", True),
+                4: (b"/usr/lib64/firefox/firefox\0", False),
+            }
+            for pid, (cmdline, _) in cases.items():
+                os.makedirs(os.path.join(proc, str(pid)))
+                with open(os.path.join(proc, str(pid), "comm"), "w") as f:
+                    f.write("x\n")
+                with open(os.path.join(proc, str(pid), "cmdline"), "wb") as f:
+                    f.write(cmdline)
+            for pid, (_, expected) in cases.items():
+                self.assertEqual(vg.proc_info(pid, proc).game, expected, pid)
+
     def test_proc_info_of_self(self):
         info = vg.proc_info(os.getpid())
         self.assertIsNotNone(info)
@@ -172,6 +306,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.critical_percent, 97.0)
         self.assertIn("kwin_wayland", config.protected)
         self.assertIn("Xwayland", config.protected)
+        self.assertTrue(config.desktop_check)
+        self.assertTrue(config.game_hint)
+        self.assertEqual(config.game_hint_min_mib, 400)
 
     def test_override_and_invalid_mode(self):
         with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as f:

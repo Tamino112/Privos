@@ -1,0 +1,12 @@
+{
+    "rules": [
+        { "pattern": { "feature": "procname", "matches": "kwin_wayland" }, "profile": "Privos: Desktop spart VRAM" },
+        { "pattern": { "feature": "procname", "matches": "plasmashell" }, "profile": "Privos: Desktop spart VRAM" }
+    ],
+    "profiles": [
+        {
+            "name": "Privos: Desktop spart VRAM",
+            "settings": [ { "key": "GLVidHeapReuseRatio", "value": 0 } ]
+        }
+    ]
+}

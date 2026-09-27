@@ -30,23 +30,69 @@ alles. Der Desktop kann den Bildschirm nicht mehr zeichnen, und der PC scheint a
 1. **privos-vram-guard**: ein eigener Dienst mit hoher Priorität. Er ist im RAM gesperrt,
    wird also nie ausgelagert, und ist vor dem OOM-Killer geschützt.
    - Er misst jede Sekunde über NVML den VRAM pro GPU und pro App.
-   - Ab **90 %** VRAM zeigt er eine Warnung mit dem größten Verbraucher,
+   - Ab **90 %** VRAM zeigt er einmal pro App eine Warnung mit dem größten Verbraucher,
      zum Beispiel „Game.exe nutzt 6,1 GB“.
-   - Liegt der VRAM über **97 %** und das System stockt 3 Sekunden lang
-     (Linux-Speicherdruck, PSI), wird die App mit dem meisten VRAM beendet.
-   - Sind weniger als **150 MB** VRAM frei, und das 8 Sekunden lang, wird die App ebenfalls beendet.
+   - **Volles VRAM allein ist kein Notfall.** Spiele wie ARK füllen den Grafikspeicher
+     absichtlich bis zum Rand und laufen dabei stabil. Solange der PC reagiert, wird nichts beendet.
+   - Eingegriffen wird erst, wenn der VRAM über **97 %** liegt **und** der PC 3 Sekunden lang
+     wirklich hängt: Entweder stockt der Arbeitsspeicher (Linux-Speicherdruck, PSI), oder der
+     Desktop (KWin) antwortet nicht mehr. Dann wird die App mit dem meisten VRAM beendet.
    - Die App bekommt erst ein höfliches Beenden-Signal (SIGTERM) und nach 3 Sekunden ein hartes (SIGKILL).
+   - **Spiel-Tipp:** Startet ein Spiel, während andere Apps zusammen mehr als 400 MB VRAM belegen
+     (Browser, Discord …), nennt eine Benachrichtigung diese Apps. Geschlossen wird dabei nichts.
    - Desktop, Login, Audio und Systemprozesse werden **nie** beendet.
    - Auf Laptops lässt er die dGPU schlafen und weckt sie nicht zum Messen auf.
-2. **Notfall-Taste `Strg+Alt+Umschalt+Esc`** beendet sofort die App mit dem meisten VRAM.
+2. **VRAM-Budget für Spiele** (`privos-vram-budget.service`): Beim Start misst Privos das VRAM
+   und meldet Proton-Spielen (DirectX 9–12) **1 GB weniger**, als die Karte hat. Bei einer
+   8-GB-Karte sieht ARK also 7 GB. Unreal-Engine-Spiele richten ihren Texturspeicher danach aus,
+   und der Desktop behält Platz. Technisch ist das die DXVK-Option `dxgi.maxDeviceMemory`, die beim
+   Login als `DXVK_CONFIG` gesetzt wird. Das ist keine harte Grenze, sondern eine Angabe, nach der
+   sich Spiele richten. Pro Spiel abschalten: Steam-Startoption `DXVK_CONFIG= %command%`.
+3. **Desktop spart VRAM**: Ein NVIDIA-Anwendungsprofil
+   (`/etc/nvidia/nvidia-application-profiles-rc.d/50-privos-desktop-vram.json`) verhindert, dass
+   KWin und plasmashell freigegebenen Grafikspeicher horten (`GLVidHeapReuseRatio=0`). Das spart
+   je nach Nutzung einige hundert MB.
+4. **Notfall-Taste `Strg+Alt+Umschalt+Esc`** beendet sofort die App mit dem meisten VRAM.
    Den gleichen Effekt hat `privos-vram-guard panic` im Terminal.
-3. **systemd-oomd**: Wenn der RAM 10 Sekunden lang zu 60 % blockiert ist, beendet es gezielt
+5. **systemd-oomd**: Wenn der RAM 10 Sekunden lang zu 60 % blockiert ist, beendet es gezielt
    die App-Gruppe, die den Druck verursacht. Fedora-Standard wäre 80 % nach 20 Sekunden.
    Ist der Swap zu 90 % voll, greift es ebenfalls ein.
-4. **ZRAM**: komprimierter Swap im RAM, so groß wie der RAM, höchstens 16 GB, mit zstd.
+6. **ZRAM**: komprimierter Swap im RAM, so groß wie der RAM, höchstens 16 GB, mit zstd.
    Er puffert Speicherspitzen ab, statt einzufrieren.
-5. **Magic SysRq** als letzter Ausweg: `Alt+Druck+F` beendet den größten RAM-Verbraucher,
+7. **Magic SysRq** als letzter Ausweg: `Alt+Druck+F` beendet den größten RAM-Verbraucher,
    `Alt+Druck+B` startet den PC neu.
+
+### Warum geht VRAM unter Linux nicht einfach in den RAM wie bei Windows?
+
+Windows verschiebt bei vollem VRAM automatisch Daten in den normalen RAM („Gemeinsam genutzter
+GPU-Speicher“). Das Spiel ruckelt dann, läuft aber weiter. Der NVIDIA-Treiber für Linux kann das
+nur teilweise. Seit Treiber 595 weicht er unter Wayland besser auf den RAM aus, aber nicht so
+zuverlässig wie Windows. Proton (vkd3d-proton) hätte eine eigene Auslagerung in den RAM, schaltet
+sie bei NVIDIA aber ab, weil es sich auf den Treiber verlässt.
+
+**Zum Ausprobieren** (pro Spiel, als Steam-Startoption):
+
+```
+VKD3D_DISABLE_EXTENSIONS=VK_EXT_pageable_device_local_memory %command%
+```
+
+Dann lagert Proton bei DirectX-12-Spielen selbst in den RAM aus, wenn der VRAM voll ist.
+Das ist **experimentell**. Es kann Leistung kosten, und manche Spiele laufen damit schlechter.
+Wenn es bei einem Spiel gut klappt, kann Privos es später für dieses Spiel automatisch setzen.
+
+### ARK: Survival Ascended mit 8 GB VRAM
+
+- Texturen auf **Mittel**, DLSS an (Qualität oder Balanced).
+- In `ShooterGame/Saved/Config/Windows/Engine.ini` (im Spielordner) diesen Abschnitt ergänzen.
+  Er legt den Texturspeicher fest auf 4 GB. Laut Community hilft das bei 8-GB-Karten
+  (4000–4800 ausprobieren):
+  ```ini
+  [SystemSettings]
+  r.Streaming.PoolSize=4000
+  r.Streaming.LimitPoolSizeToVRAM=0
+  ```
+- Seit dem Unreal-5.5-Update berichten Spieler von einem VRAM-Leck. Wird es nach langen
+  Sessions ruckelig, hilft ein Neustart des Spiels.
 
 ### Einstellungen anpassen
 
@@ -57,13 +103,22 @@ Die Standardwerte stehen in `/usr/share/privos/vram-guard.conf`. Eigene Werte ge
 [guard]
 # nur warnen, nie etwas beenden
 mode = notify
+# oder: schon eingreifen, wenn VRAM lange voll ist (auch ohne Hängen)
+# mode = aggressive
+# Spiel-Tipp ausschalten
+game_hint = no
 # oder: früher warnen
 warn_percent = 85
 # eigene Apps schützen
 protected = kwin_wayland, plasmashell, Xwayland, meine-app
+
+[budget]
+# nur 512 MB statt 1 GB für den Desktop reservieren (oder: enabled = no)
+reserve_mib = 512
 ```
 
-Danach: `sudo systemctl restart privos-vram-guard`
+Danach: `sudo systemctl restart privos-vram-guard privos-vram-budget`, und für das
+VRAM-Budget einmal ab- und wieder anmelden.
 
 **Hinweis:** Eine eigene `protected`-Liste ersetzt die Standardliste. Übernimm deshalb die
 Desktop-Prozesse aus der Standarddatei in deine Liste.

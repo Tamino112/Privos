@@ -29,6 +29,7 @@ jobs:
           shellcheck build_files/*.sh \
             system_files/usr/bin/privos-gpu-check \
             system_files/usr/libexec/privos/nvidia-flatpak-sync \
+            system_files/usr/lib/systemd/user-environment-generators/60-privos-vram-budget \
             installer/build.sh \
             installer/system_files/usr/bin/privos-live-welcome
 
@@ -93,6 +94,9 @@ jobs:
             test -f /usr/share/color-schemes/PrivosDark.colors
             test -f /usr/share/plasma/look-and-feel/org.privos.desktop/contents/splash/Splash.qml
             systemctl is-enabled privos-vram-guard.service
+            systemctl is-enabled privos-vram-budget.service
+            test -x /usr/lib/systemd/user-environment-generators/60-privos-vram-budget
+            python3 -m json.tool /etc/nvidia/nvidia-application-profiles-rc.d/50-privos-desktop-vram.json >/dev/null
             systemctl is-enabled systemd-oomd.service
             test -z "$(ls /usr/share/vulkan/icd.d/nouveau_icd.*.json 2>/dev/null)"
             python3 /usr/bin/privos-vram-guard --help

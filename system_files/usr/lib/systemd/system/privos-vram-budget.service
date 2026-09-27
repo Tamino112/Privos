@@ -1,0 +1,15 @@
+[Unit]
+Description=VRAM-Budget für Spiele bestimmen (Reserve für den Desktop)
+Documentation=file:///usr/share/doc/privos/NVIDIA.md
+ConditionPathExists=/sys/module/nvidia
+After=systemd-modules-load.service
+# Muss vor dem ersten Login fertig sein, damit der Generator das Budget findet
+Before=systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/privos-vram-guard budget
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
