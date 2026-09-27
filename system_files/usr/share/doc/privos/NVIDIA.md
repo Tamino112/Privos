@@ -36,7 +36,7 @@ alles. Der Desktop kann den Bildschirm nicht mehr zeichnen, und der PC scheint a
      absichtlich bis zum Rand und laufen dabei stabil. Solange der PC reagiert, wird nichts beendet.
    - Eingegriffen wird erst, wenn der VRAM über **97 %** liegt **und** der PC 3 Sekunden lang
      wirklich hängt: Entweder stockt der Arbeitsspeicher (Linux-Speicherdruck, PSI), oder der
-     Desktop (KWin) antwortet nicht mehr. Dann wird die App mit dem meisten VRAM beendet.
+     Desktop (GNOME Shell/Mutter) antwortet nicht mehr. Dann wird die App mit dem meisten VRAM beendet.
    - Die App bekommt erst ein höfliches Beenden-Signal (SIGTERM) und nach 3 Sekunden ein hartes (SIGKILL).
    - **Spiel-Tipp:** Startet ein Spiel, während andere Apps zusammen mehr als 400 MB VRAM belegen
      (Browser, Discord …), nennt eine Benachrichtigung diese Apps. Geschlossen wird dabei nichts.
@@ -50,7 +50,7 @@ alles. Der Desktop kann den Bildschirm nicht mehr zeichnen, und der PC scheint a
    sich Spiele richten. Pro Spiel abschalten: Steam-Startoption `DXVK_CONFIG= %command%`.
 3. **Desktop spart VRAM**: Ein NVIDIA-Anwendungsprofil
    (`/etc/nvidia/nvidia-application-profiles-rc.d/50-privos-desktop-vram.json`) verhindert, dass
-   KWin und plasmashell freigegebenen Grafikspeicher horten (`GLVidHeapReuseRatio=0`). Das spart
+   GNOME Shell freigegebenen Grafikspeicher horten (`GLVidHeapReuseRatio=0`). Das spart
    je nach Nutzung einige hundert MB.
 4. **Notfall-Taste `Strg+Alt+Umschalt+Esc`** beendet sofort die App mit dem meisten VRAM.
    Den gleichen Effekt hat `privos-vram-guard panic` im Terminal.
@@ -110,7 +110,7 @@ game_hint = no
 # oder: früher warnen
 warn_percent = 85
 # eigene Apps schützen
-protected = kwin_wayland, plasmashell, Xwayland, meine-app
+protected = gnome-shell, gdm, Xwayland, meine-app
 
 [budget]
 # nur 512 MB statt 1 GB für den Desktop reservieren (oder: enabled = no)

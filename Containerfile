@@ -1,10 +1,10 @@
 # Privos – ein modernes Linux-OS, optimiert für NVIDIA, Gaming, Game Dev und Coding.
 #
 # Das komplette Betriebssystem wird aus dieser Datei gebaut (bootc / Fedora Atomic).
-# Basis: Universal Blue "kinoite-nvidia" = Fedora Kinoite (KDE Plasma) mit vorgebautem,
+# Basis: Universal Blue "silverblue-nvidia" = Fedora Silverblue (GNOME) mit vorgebautem,
 # für Secure Boot signiertem NVIDIA-Open-Treiber, CUDA-Container-Support und Multilib.
 
-ARG BASE_IMAGE="ghcr.io/ublue-os/kinoite-nvidia"
+ARG BASE_IMAGE="ghcr.io/ublue-os/silverblue-nvidia"
 ARG BASE_TAG="latest"
 
 # Build-Skripte und Systemdateien, die nicht selbst im fertigen Image landen sollen

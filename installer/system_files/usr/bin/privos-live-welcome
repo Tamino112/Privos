@@ -1,61 +1,100 @@
-#!/usr/bin/bash
-# Willkommensfenster im Privos-Live-System: ausprobieren oder installieren.
-set -uo pipefail
+#!/usr/bin/python3
+"""Willkommensfenster für die GNOME-Live-Sitzung von Privos."""
 
-if [[ "${LC_MESSAGES:-${LANG:-C}}" == de* ]]; then
-    TITLE="Willkommen bei Privos"
-    TEXT="<span size='x-large'><b>Willkommen bei Privos!</b></span>
+import locale
+import os
+import subprocess
 
-Du kannst Privos jetzt ausprobieren, ohne etwas an deinem PC zu ändern,
-oder es direkt installieren.
+import gi
 
-<small>Hinweis: Im Live-System laufen noch nicht alle NVIDIA-Funktionen.
-Das volle System mit NVIDIA-Treiber bekommst du nach der Installation.</small>"
-    INSTALL="Privos installieren"
-    TRY="Erst ausprobieren"
-    NO_UEFI="Privos braucht einen PC, der im <b>UEFI-Modus</b> startet.
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk
 
-Bitte im BIOS/UEFI den <b>CSM-/Legacy-Modus</b> ausschalten und neu starten."
-    LOW_RAM="Dein PC hat nur <b>%s</b> Arbeitsspeicher.
-Für Privos werden mindestens <b>8 GB</b> empfohlen – die Installation kann fehlschlagen."
-    OK="OK"
-else
-    TITLE="Welcome to Privos"
-    TEXT="<span size='x-large'><b>Welcome to Privos!</b></span>
 
-You can try Privos now without changing anything on your PC,
-or install it right away.
+GERMAN = (locale.getlocale()[0] or os.environ.get("LANG", "")).startswith("de")
 
-<small>Note: not all NVIDIA features are available in the live system.
-You get the full system with the NVIDIA driver after installing.</small>"
-    INSTALL="Install Privos"
-    TRY="Try it first"
-    NO_UEFI="Privos needs a PC that boots in <b>UEFI mode</b>.
 
-Please disable <b>CSM/Legacy mode</b> in your BIOS/UEFI settings and restart."
-    LOW_RAM="Your PC only has <b>%s</b> of memory.
-At least <b>8 GB</b> is recommended – the installation may fail."
-    OK="OK"
-fi
+def message(de, en):
+    return de if GERMAN else en
 
-if [[ ! -d /sys/firmware/efi ]]; then
-    yad --title="Privos" --window-icon=privos-logo --image=dialog-warning \
-        --text="${NO_UEFI}" --button="${OK}:0" --buttons-layout=center --on-top || true
-fi
 
-mem_kb="$(awk '/^MemTotal/ {print $2}' /proc/meminfo)"
-if (( mem_kb > 0 && mem_kb < 7500000 )); then
-    mem_human="$(numfmt --from-unit=1024 --to=iec --suffix=B "${mem_kb}")"
-    # shellcheck disable=SC2059
-    yad --title="Privos" --window-icon=privos-logo --image=dialog-warning \
-        --text="$(printf "${LOW_RAM}" "${mem_human}")" --button="${OK}:0" \
-        --buttons-layout=center --on-top || true
-fi
+def hardware_note():
+    notes = []
+    if not os.path.isdir("/sys/firmware/efi"):
+        notes.append(message(
+            "Dieser PC wurde im Legacy-Modus gestartet. Für die Installation bitte UEFI aktivieren.",
+            "This PC booted in legacy mode. Enable UEFI before installing."))
+    try:
+        with open("/proc/meminfo", encoding="ascii") as memory:
+            memory_kib = int(next(line.split()[1] for line in memory if line.startswith("MemTotal:")))
+        if memory_kib < 7_500_000:
+            notes.append(message(
+                "Weniger als 8 GB Arbeitsspeicher erkannt. Die Installation kann fehlschlagen.",
+                "Less than 8 GB of memory detected. Installation may fail."))
+    except (OSError, StopIteration, ValueError):
+        pass
+    return "\n".join(notes)
 
-if yad --title="${TITLE}" --window-icon=privos-logo \
-    --image=/usr/share/privos/branding/privos-logo-tile.png \
-    --text="${TEXT}" --text-align=center --buttons-layout=center --on-top --fixed \
-    --button="${TRY}:1" --button="${INSTALL}:0"; then
-    liveinst &
-    disown
-fi
+
+class Welcome(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="org.privos.LiveWelcome")
+
+    def do_activate(self):
+        window = self.props.active_window
+        if window:
+            window.present()
+            return
+
+        window = Adw.ApplicationWindow(application=self)
+        window.set_title(message("Willkommen bei Privos", "Welcome to Privos"))
+        window.set_default_size(620, 480)
+
+        page = Adw.StatusPage()
+        page.set_icon_name("privos-logo")
+        page.set_title(message("Willkommen bei Privos", "Welcome to Privos"))
+        page.set_description(message(
+            "Entdecke Privos in Ruhe oder beginne direkt mit der Installation.",
+            "Explore Privos at your own pace or start installing now."))
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content.set_halign(Gtk.Align.CENTER)
+        content.set_margin_top(16)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        actions.set_halign(Gtk.Align.CENTER)
+        try_button = Gtk.Button(label=message("Privos ausprobieren", "Try Privos"))
+        try_button.connect("clicked", lambda _button: window.close())
+        install_button = Gtk.Button(label=message("Privos installieren", "Install Privos"))
+        install_button.add_css_class("suggested-action")
+        install_button.connect("clicked", self.install, window)
+        actions.append(try_button)
+        actions.append(install_button)
+        content.append(actions)
+
+        note = hardware_note()
+        if note:
+            warning = Gtk.Label(label=note)
+            warning.set_wrap(True)
+            warning.set_max_width_chars(64)
+            warning.add_css_class("warning")
+            content.append(warning)
+
+        hint = Gtk.Label(label=message(
+            "Der vollständige NVIDIA-Treiber steht nach der Installation bereit.",
+            "The full NVIDIA driver is available after installation."))
+        hint.set_wrap(True)
+        hint.add_css_class("dim-label")
+        content.append(hint)
+        page.set_child(content)
+        window.set_content(page)
+        window.present()
+
+    def install(self, _button, window):
+        subprocess.Popen(["liveinst"], start_new_session=True)
+        window.close()
+
+
+if __name__ == "__main__":
+    Welcome().run()

@@ -429,19 +429,17 @@ def notify(title, body, urgency=1, uids=None):
 
 
 def desktop_hung(timeout):
-    """True, wenn der Desktop (KWin) eines angemeldeten Nutzers nicht mehr antwortet.
+    """True, wenn GNOME Shell/Mutter eines angemeldeten Nutzers nicht mehr antwortet.
 
-    Bei vollem VRAM hängt oft nicht das Spiel, sondern der Compositor. Das zeigt PSI nicht,
-    eine D-Bus-Anfrage an KWin aber schon. Abgefragt wird eine echte Eigenschaft, weil KWins
-    Hauptschleife sie beantworten muss (ein bloßer Peer.Ping käme auch von einem hängenden
-    KWin zurück). Läuft KWin gar nicht, zählt das nicht als hängend.
+    GetCurrentState muss von Mutters Hauptschleife beantwortet werden. Ein bloßer
+    D-Bus-Ping wäre dafür nicht aussagekräftig. Ohne GNOME-Sitzung gilt der Desktop
+    nicht als hängend.
     """
     for uid, gid, address in session_buses():
-        cmd = ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
-               "--object-path", "/VirtualDesktopManager",
-               "--method", "org.freedesktop.DBus.Properties.Get",
-               "--timeout", str(max(1, int(timeout))),
-               "org.kde.KWin.VirtualDesktopManager", "count"]
+        cmd = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
+               "--object-path", "/org/gnome/Mutter/DisplayConfig",
+               "--method", "org.gnome.Mutter.DisplayConfig.GetCurrentState",
+               "--timeout", str(max(1, int(timeout)))]
         try:
             result = _session_run(uid, gid, address, cmd, timeout=timeout + 3)
         except subprocess.TimeoutExpired:

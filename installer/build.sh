@@ -48,13 +48,13 @@ DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
     --add "dmsquash-live dmsquash-live-autooverlay" \
     "/usr/lib/modules/${kernel}/initramfs.img" "${kernel}"
 
-# --- Live-Sitzung (automatische Anmeldung als liveuser in KDE) -------------------------
+# --- Live-Sitzung (automatische Anmeldung als liveuser in GNOME) -----------------------
 dnf install -y livesys-scripts
-sed -i "s/^livesys_session=.*/livesys_session=kde/" /etc/sysconfig/livesys
+sed -i "s/^livesys_session=.*/livesys_session=gnome/" /etc/sysconfig/livesys
 systemctl enable livesys.service livesys-late.service
 
 # --- Installer (Anaconda) --------------------------------------------------------------
-dnf install -y --allowerasing anaconda-live libblockdev-{btrfs,lvm,dm} yad
+dnf install -y --allowerasing anaconda-live libblockdev-{btrfs,lvm,dm} python3-gobject gtk4 libadwaita
 mkdir -p /var/lib/rpm-state
 
 cat >> /usr/share/anaconda/interactive-defaults.ks <<EOF

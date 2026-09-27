@@ -1,0 +1,4 @@
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/privos-panic]
+name='Privos VRAM-Notfall'
+command='/usr/bin/privos-vram-guard panic'
+binding='<Primary><Alt><Shift>Escape'

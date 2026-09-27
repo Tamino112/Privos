@@ -30,11 +30,12 @@ jobs:
             system_files/usr/bin/privos-gpu-check \
             system_files/usr/libexec/privos/nvidia-flatpak-sync \
             system_files/usr/lib/systemd/user-environment-generators/60-privos-vram-budget \
-            installer/build.sh \
-            installer/system_files/usr/bin/privos-live-welcome
+            installer/build.sh
 
       - name: Python-Tests (VRAM-Wächter)
-        run: python3 -m unittest discover -s tests -v
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m py_compile installer/system_files/usr/bin/privos-live-welcome
 
   build:
     name: Build & Push
@@ -90,9 +91,12 @@ jobs:
             test -x /usr/bin/privos-gpu-check
             grep -q '^ID=privos' /usr/lib/os-release
             test "$(plymouth-set-default-theme)" = privos
-            test -f /usr/share/wallpapers/Privos/contents/images_dark/3840x2160.png
-            test -f /usr/share/color-schemes/PrivosDark.colors
-            test -f /usr/share/plasma/look-and-feel/org.privos.desktop/contents/splash/Splash.qml
+            rpm -q gnome-shell gnome-shell-extension-dash-to-panel gnome-shell-extension-appindicator
+            test -f /usr/share/backgrounds/privos/privos-dark.png
+            test -f /usr/share/backgrounds/privos/privos-light.png
+            test -f /usr/share/glib-2.0/schemas/90_privos.gschema.override
+            test -f /etc/dconf/db/privos
+            GSETTINGS_BACKEND=memory gsettings get org.gnome.shell enabled-extensions | grep -q dash-to-panel
             systemctl is-enabled privos-vram-guard.service
             systemctl is-enabled privos-vram-budget.service
             test -x /usr/lib/systemd/user-environment-generators/60-privos-vram-budget

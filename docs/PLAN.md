@@ -32,7 +32,7 @@ Genau das machen wir auch.
 | C – Ubuntu (wie Zorin) | Cubic / live-build | Riesige Community | Ältere Treiber & Mesa, genau das "nicht optimiert"-Problem von Zorin |
 
 **Empfehlung: Option A.** Wir starten mit dem Universal-Blue-Image-Template und einem
-NVIDIA-Basis-Image (z. B. `kinoite-nvidia-open`). Damit haben wir in Tag 1 ein
+NVIDIA-Basis-Image (`silverblue-nvidia`). Damit haben wir in Tag 1 ein
 bootendes System mit funktionierendem NVIDIA-Treiber und können uns auf das
 konzentrieren, was Privos besonders macht.
 
@@ -76,7 +76,7 @@ konzentrieren, was Privos besonders macht.
 - Wayland als Standard mit Explicit Sync (flüssig, kein Flackern), X11-Session als Fallback
 - Kernel-Parameter: `nvidia-drm.modeset=1`, `nvidia-drm.fbdev=1`
 - Suspend/Hibernate korrekt: `NVreg_PreserveVideoMemoryAllocations=1` + `nvidia-suspend/resume/hibernate`-Services
-- VRR/G-Sync, HDR (KDE Plasma 6 + Gamescope)
+- VRR/G-Sync und HDR (GNOME und Gamescope; Hardware-Test steht aus)
 - DLSS/Reflex/Ray Tracing in Proton: `PROTON_ENABLE_NVAPI=1`, DXVK-NVAPI standardmäßig an
 - CUDA + `nvidia-container-toolkit` → CUDA/PyTorch in Containern ohne Setup
 - Hardware-Video-Decode (NVDEC) für Browser & Videoplayer (`nvidia-vaapi-driver`)
@@ -129,8 +129,8 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 - `just`-Befehle für alles: `pv update`, `pv setup-dev python-cuda`, `pv gpu-check` …
 
 ### 4.7 Look & Feel ("Zorin-schön, aber eigenständig")
-- **Desktop: KDE Plasma 6** (beste NVIDIA-Wayland-, HDR- und VRR-Unterstützung, extrem anpassbar)
-  – Alternativ GNOME (näher am Zorin-Look). → *Entscheidung offen, siehe unten*
+- **Desktop: GNOME** auf Silverblue-Basis, mit einer unteren App-Leiste und eigenen
+  hellen und dunklen Hintergründen. Das Layout soll ruhig und modern wirken.
 - Eigenes Theme: dunkel/hell, abgerundete Ecken, dezente Transparenz, eine Akzentfarbe
 - Layout-Presets wie bei Zorin: "Windows-Style", "macOS-Style", "Minimal"
 - Schrift: Inter (UI) + JetBrains Mono (Code); Icon-Set (z. B. Papirus, angepasst)
@@ -160,7 +160,7 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 - [ ] Volles VRAM ohne Hängen beendet das Spiel NICHT (Test: ARK Survival Ascended, 8-GB-Karte, 1 h spielen)
 - [ ] VRAM-Budget aktiv: `privos-gpu-check` zeigt es, und ASA bleibt unter dem Budget (`privos-vram-guard status`)
 - [ ] Spiel-Tipp erscheint beim Spielstart, wenn Firefox/Discord offen sind
-- [ ] KWin braucht mit dem NVIDIA-Profil spürbar weniger VRAM (vorher/nachher `privos-vram-guard status`)
+- [ ] GNOME Shell braucht mit dem NVIDIA-Profil spürbar weniger VRAM (vorher/nachher `privos-vram-guard status`)
 - [ ] Notfall-Taste `Strg+Alt+Umschalt+Esc` funktioniert
 - [ ] Flatpak-App (z. B. Blender) nutzt die GPU
 - [ ] CUDA im Container: `podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi`
@@ -175,7 +175,7 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 ---
 
 ## 7. Offene Entscheidungen
-1. **Desktop:** KDE Plasma 6 (erstmal gewählt, weil beste NVIDIA-Unterstützung – GNOME bleibt möglich)
+1. **Desktop:** GNOME ist für Privos gewählt; Feinabstimmung und Hardware-Test stehen aus.
 2. **Welche NVIDIA-Karte hast du?** (Bestimmt, ob wir mit `nvidia-open` oder Legacy starten)
 3. **Basis:** Universal Blue selbst (volle Kontrolle) oder direkt auf Bazzite aufsetzen (schneller viel Gaming-Zeug gratis, aber weniger "eigenes" OS)?
 4. **Look:** Hast du Referenzen (Screenshots, Farben, Stil), wie Privos aussehen soll?

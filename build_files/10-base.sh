@@ -10,7 +10,7 @@ dnf5 install -y \
     pciutils \
     mokutil
 
-# Identität: überall "Privos" statt Fedora Kinoite (ID_LIKE=fedora hält Fedora-Tools kompatibel)
+# Identität: überall "Privos" statt Fedora Silverblue (ID_LIKE=fedora hält Fedora-Tools kompatibel)
 # shellcheck source=/dev/null
 source /usr/lib/os-release
 PRIVOS_VERSION="${VERSION_ID}.$(date -u +%Y%m%d)"
@@ -21,7 +21,7 @@ sed -i \
     -e "s|^VERSION=.*|VERSION=\"${PRIVOS_VERSION} (NVIDIA Edition)\"|" \
     -e "s|^VARIANT=.*|VARIANT=\"NVIDIA Edition\"|" \
     -e "s|^LOGO=.*|LOGO=privos-logo|" \
-    -e "s|^ANSI_COLOR=.*|ANSI_COLOR=\"0;38;2;139;92;246\"|" \
+    -e "s|^ANSI_COLOR=.*|ANSI_COLOR=\"0;38;2;76;167;183\"|" \
     -e "s|^CPE_NAME=.*|CPE_NAME=\"cpe:/o:privos:privos:${VERSION_ID}\"|" \
     -e "s|^DEFAULT_HOSTNAME=.*|DEFAULT_HOSTNAME=\"privos\"|" \
     -e "s|^HOME_URL=.*|HOME_URL=\"https://github.com/Tamino112/Privos\"|" \

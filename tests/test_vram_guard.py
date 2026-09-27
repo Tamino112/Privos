@@ -134,8 +134,8 @@ class PickVictimTests(unittest.TestCase):
     def test_picks_largest_unprotected_user_process(self):
         procs = {10: 300 * MIB, 20: 5000 * MIB, 30: 2000 * MIB, 40: 900 * MIB}
         infos = {
-            10: self.info(10, 1000, "kwin_wayland"),
-            20: self.info(20, 1000, "kwin_wayland"),   # Desktop: geschützt
+            10: self.info(10, 1000, "gnome-shell"),
+            20: self.info(20, 1000, "gnome-shell"),   # Desktop: geschützt
             30: self.info(30, 1000, "Game.exe"),
             40: self.info(40, 1000, "blender"),
         }
@@ -171,7 +171,7 @@ class GameHintTests(unittest.TestCase):
         infos = {1: self.info(1, "ArkAscended.exe", game=True),
                  2: self.info(2, "firefox"),
                  3: self.info(3, "Discord"),
-                 4: self.info(4, "kwin_wayland"),       # Desktop: nie nennen
+                 4: self.info(4, "gnome-shell"),       # Desktop: nie nennen
                  5: self.info(5, "steamwebhelper")}     # gehört zum Spielen
         hint = vg.game_hint(1, procs, infos, cfg())
         self.assertEqual(hint, [("firefox", 700 * MIB), ("Discord", 300 * MIB)])
@@ -304,7 +304,7 @@ class ConfigTests(unittest.TestCase):
         config = cfg()
         self.assertEqual(config.mode, "balanced")
         self.assertEqual(config.critical_percent, 97.0)
-        self.assertIn("kwin_wayland", config.protected)
+        self.assertIn("gnome-shell", config.protected)
         self.assertIn("Xwayland", config.protected)
         self.assertTrue(config.desktop_check)
         self.assertTrue(config.game_hint)
@@ -317,7 +317,7 @@ class ConfigTests(unittest.TestCase):
             config = vg.load_config([DEFAULT_CONFIG, f.name])
             self.assertEqual(config.mode, "balanced")
             self.assertEqual(config.warn_percent, 80.0)
-            self.assertIn("plasmashell", config.protected)
+            self.assertIn("gdm", config.protected)
         finally:
             os.unlink(f.name)
 

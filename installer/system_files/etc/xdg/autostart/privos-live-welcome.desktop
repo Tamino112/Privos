@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Privos Willkommen
+Name[en]=Welcome to Privos
 Exec=/usr/bin/privos-live-welcome
 Icon=privos-logo
-X-KDE-autostart-phase=2
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-Delay=3
