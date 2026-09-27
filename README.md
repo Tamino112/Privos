@@ -73,6 +73,32 @@ podman build -t privos-nvidia:dev -f Containerfile .
 python3 -m unittest discover -s tests -v
 ```
 
+## Ohne neue ISO in einer VM testen
+
+Auf dem eingerichteten Windows-PC startet `scripts/start-privos-vm.ps1` Privos in
+QEMU/KVM über WSL 2. Die virtuelle Festplatte liegt unter
+`/root/privos-vm/privos.qcow2` in Ubuntu und bleibt nach dem Schließen erhalten.
+
+Beim ersten Mal die vorhandene ISO booten und Privos auf der virtuellen
+80-GB-Festplatte installieren:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1 -Install
+```
+
+Danach startet die installierte VM ohne ISO:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1
+```
+
+Für Änderungen an GNOME-Einstellungen und Benutzerdateien kann man direkt in
+der laufenden VM arbeiten. Änderungen am `Containerfile` oder unter
+`system_files/` brauchen ein neues, veröffentlichtes OS-Image und danach in der VM
+`sudo bootc upgrade` plus Neustart. Die ISO muss dafür nicht neu gebaut werden.
+Die VM emuliert keine NVIDIA-Grafikkarte; NVIDIA-Funktionen brauchen einen Test
+auf passender Hardware.
+
 ## Image-Signatur (optional, empfohlen)
 
 ```bash
