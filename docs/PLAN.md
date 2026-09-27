@@ -146,9 +146,9 @@ Nutzungsbedingungen – das machen wir nicht. Was Privos stattdessen tun kann:
 | **0 – Fundament** | Repo-Struktur, Containerfile auf NVIDIA-Basis, GitHub Actions, Image-Signierung | Image baut automatisch und bootet in einer VM | ✅ angelegt |
 | **1 – NVIDIA** | Treiber, Secure Boot, Wayland, Suspend, CUDA, NVDEC, `gpu-check`, **VRAM-Wächter** | Auf echter NVIDIA-Hardware getestet, alles läuft | 🔧 gebaut, Hardware-Test offen |
 | **2 – Gaming** | Steam, Proton, Lutris, Heroic, Gamescope, MangoHud, Controller, Tweaks | Erste Spiele laufen, FPS-Benchmarks vs. Zorin/Windows | ⏳ |
-| **3 – Look & Feel** | Theme, Branding, Boot/Login-Screen, Layout-Presets | Sieht aus wie ein eigenes, fertiges OS | ⏳ |
+| **3 – Look & Feel** | Theme, Branding, Boot/Login-Screen, Layout-Presets | Sieht aus wie ein eigenes, fertiges OS | 🔧 Grundausstattung gebaut |
 | **4 – Dev & GameDev** | Tools, Dev-Boxen, CUDA-Container, `pv`-Befehle | Blender/Godot/UE5 + Coding-Setup in Minuten | ⏳ |
-| **5 – Privos Hub + ISO** | Welcome-App, Anti-Cheat-Checker, grafischer Installer, Dual-Boot | Installierbare ISO für andere Leute | ⏳ (ISO-Build existiert schon) |
+| **5 – Privos Hub + ISO** | Welcome-App, Anti-Cheat-Checker, grafischer Installer, Dual-Boot | Installierbare ISO für andere Leute | 🔧 Live-ISO + Installer gebaut, erster CI-Lauf offen |
 | **6 – Feinschliff** | Performance-Tuning, Laptop-Support, Legacy-NVIDIA-Image, Doku, Website | Erster öffentlicher Release (v1.0) | ⏳ |
 
 ### Phase 1 – Hardware-Testliste
