@@ -78,12 +78,25 @@ jobs:
         if: always()
         run: sudo df -h
 
+      # Titanoboa ruft realpath ohne -m auf: die Zieldatei muss bereits existieren.
+      # Ein Ziel außerhalb von github.workspace bleibt dabei ein absoluter Pfad.
+      - name: ISO-Ziel vorbereiten
+        run: |
+          mkdir -p "${RUNNER_TEMP}/privos-iso"
+          touch "${RUNNER_TEMP}/privos-iso/${{ steps.ref.outputs.iso }}"
+
       - name: ISO erzeugen (Titanoboa)
         id: build
         uses: ublue-os/titanoboa@5c457c3d0518bd17e754be0fd98a60d29d26abb4
         with:
           image-ref: localhost/privos-live:latest
-          iso-dest: ${{ github.workspace }}/upload/${{ steps.ref.outputs.iso }}
+          iso-dest: ${{ runner.temp }}/privos-iso/${{ steps.ref.outputs.iso }}
+
+      - name: ISO ins Upload-Verzeichnis verschieben
+        run: |
+          mkdir -p upload
+          mv "${RUNNER_TEMP}/privos-iso/${{ steps.ref.outputs.iso }}" "upload/${{ steps.ref.outputs.iso }}"
+          test -s "upload/${{ steps.ref.outputs.iso }}"
 
       - name: Prüfsumme
         run: |
