@@ -94,7 +94,7 @@ jobs:
             rpm -q gnome-shell gnome-shell-extension-dash-to-panel gnome-shell-extension-appindicator
             test -f /usr/share/backgrounds/privos/privos-dark.png
             test -f /usr/share/backgrounds/privos/privos-light.png
-            test -f /usr/share/glib-2.0/schemas/90_privos.gschema.override
+            test -f /usr/share/glib-2.0/schemas/zzzz_privos.gschema.override
             test -f /etc/dconf/db/privos
             GSETTINGS_BACKEND=memory gsettings get org.gnome.shell enabled-extensions | grep -q dash-to-panel
             systemctl is-enabled privos-vram-guard.service
