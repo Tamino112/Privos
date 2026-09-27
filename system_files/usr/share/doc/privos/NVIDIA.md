@@ -40,8 +40,9 @@ alles. Der Desktop kann den Bildschirm nicht mehr zeichnen, und der PC scheint a
    - Auf Laptops lässt er die dGPU schlafen und weckt sie nicht zum Messen auf.
 2. **Notfall-Taste `Strg+Alt+Umschalt+Esc`** beendet sofort die App mit dem meisten VRAM.
    Den gleichen Effekt hat `privos-vram-guard panic` im Terminal.
-3. **systemd-oomd**: Wenn der RAM 10 Sekunden lang unter starkem Druck steht, beendet es
-   gezielt die verursachende App. Standard wären mehr als 20 Sekunden.
+3. **systemd-oomd**: Wenn der RAM 10 Sekunden lang zu 60 % blockiert ist, beendet es gezielt
+   die App-Gruppe, die den Druck verursacht. Fedora-Standard wäre 80 % nach 20 Sekunden.
+   Ist der Swap zu 90 % voll, greift es ebenfalls ein.
 4. **ZRAM**: komprimierter Swap im RAM, so groß wie der RAM, höchstens 16 GB, mit zstd.
    Er puffert Speicherspitzen ab, statt einzufrieren.
 5. **Magic SysRq** als letzter Ausweg: `Alt+Druck+F` beendet den größten RAM-Verbraucher,
