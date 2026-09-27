@@ -4,6 +4,7 @@ on:
   push:
     paths-ignore:
       - '**.md'
+      - '.github/workflows/build-iso.yml'
   pull_request:
   schedule:
     - cron: '20 4 * * 1'  # wöchentlich (montags): neue Treiber/Fedora-Updates übernehmen

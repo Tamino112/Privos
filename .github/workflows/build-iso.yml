@@ -105,6 +105,7 @@ jobs:
           echo "a73e0a11731880bc6272650371427564aaf565d5dc0d9e51dd793d79b351dcba  $script" | sha256sum -c -
           sed -i 's/-Xcompression-level 19/-Xcompression-level 3/' "$script"
           grep -Fq -- '-comp zstd -Xcompression-level 3' "$script"
+          chmod +x "$script"
           sudo podman run --rm -i \
             --cap-add sys_admin --security-opt label=disable \
             -v "$script:/src/build_iso.sh:ro" \
