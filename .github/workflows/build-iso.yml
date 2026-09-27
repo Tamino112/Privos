@@ -55,8 +55,12 @@ jobs:
         run: |
           tag="${{ inputs.tag || 'latest' }}"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}"
+          update_tag=latest
+          if [[ "${tag}" == br-* ]]; then
+            update_tag="${tag}"
+          fi
           echo "image=${image}:${tag}" >> "$GITHUB_OUTPUT"
-          echo "update=${image}:latest" >> "$GITHUB_OUTPUT"
+          echo "update=${image}:${update_tag}" >> "$GITHUB_OUTPUT"
           echo "iso=privos-nvidia-${tag}-$(date -u +%Y%m%d)-live-amd64.iso" >> "$GITHUB_OUTPUT"
 
       - name: Bei GHCR anmelden
