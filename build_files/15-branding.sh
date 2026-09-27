@@ -9,9 +9,12 @@ dnf5 install -y \
     jetbrains-mono-fonts-all \
     papirus-icon-theme \
     librsvg2-tools \
+    curl \
     dconf \
     gnome-shell-extension-appindicator \
-    gnome-shell-extension-dash-to-panel
+    gnome-shell-extension-dash-to-panel \
+    gnome-menus \
+    gnome-software
 
 render() { rsvg-convert -w "$2" -h "$3" "$1" -o "$4"; }
 
@@ -33,13 +36,55 @@ render "${BRANDING}/privos-logo.svg" 256 256 /usr/share/pixmaps/privos-logo.png
 render "${BRANDING}/privos-logo-tile.svg" 128 128 "${ASSETS}/privos-logo-tile.png"
 render "${BRANDING}/privos-wordmark.svg" 720 160 "${ASSETS}/privos-wordmark.png"
 render "${BRANDING}/privos-wordmark-inverse.svg" 720 160 "${ASSETS}/privos-wordmark-inverse.png"
+install -m644 "${BRANDING}/privos-software.png" /usr/share/pixmaps/privos-software.png
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 
-# --- Wallpaper (GNOME wählt passend zum hellen oder dunklen Stil) ----------------------
+# Der Software-Starter behält seine App-ID und alle Aktionen, bekommt aber Privos-Branding.
+python3 - <<'PY'
+from pathlib import Path
+
+desktop = Path('/usr/share/applications/org.gnome.Software.desktop')
+if not desktop.is_file():
+    raise SystemExit(f'Software-Starter fehlt: {desktop}')
+
+lines = desktop.read_text(encoding='utf-8').splitlines()
+in_entry = False
+found_entry = False
+result = []
+for line in lines:
+    if line == '[Desktop Entry]':
+        found_entry = True
+        in_entry = True
+        result.extend((line, 'Name=Privos Software', 'Icon=/usr/share/pixmaps/privos-software.png'))
+        continue
+    if line.startswith('[') and line.endswith(']'):
+        in_entry = False
+    if in_entry and (line.startswith('Icon=') or line.startswith('Name=') or line.startswith('Name[')):
+        continue
+    result.append(line)
+if not found_entry:
+    raise SystemExit(f'Ungültiger Software-Starter: {desktop}')
+desktop.write_text('\n'.join(result) + '\n', encoding='utf-8')
+PY
+
+# ArcMenu liefert ein echtes Startmenü und öffnet es auch mit der Super-Taste.
+ARC_DIR=/usr/share/gnome-shell/extensions/arcmenu@arcmenu.com
+ARC_ZIP=/tmp/privos-arcmenu.zip
+curl --fail --location --retry 3 \
+    'https://extensions.gnome.org/download-extension/arcmenu@arcmenu.com.shell-extension.zip?version_tag=75483' \
+    -o "${ARC_ZIP}"
+echo "ef414c90dcb5f2b0c6ccb5f8e59fd9963c584789d3d8d26740ddb731100c4b40  ${ARC_ZIP}" | sha256sum -c -
+mkdir -p "${ARC_DIR}"
+python3 -m zipfile -e "${ARC_ZIP}" "${ARC_DIR}"
+glib-compile-schemas "${ARC_DIR}/schemas"
+rm -f "${ARC_ZIP}"
+
+# --- Wallpaper ------------------------------------------------------------------------
 WALL=/usr/share/backgrounds/privos
 mkdir -p "${WALL}"
-render "${BRANDING}/wallpaper-light.svg" 3840 2160 "${WALL}/privos-light.png"
-render "${BRANDING}/wallpaper-dark.svg" 3840 2160 "${WALL}/privos-dark.png"
+install -m644 "${BRANDING}/privos-wallpaper-default.png" "${WALL}/privos-default.png"
+install -m644 "${BRANDING}/privos-wallpaper-light.png" "${WALL}/privos-light.png"
+install -m644 "${BRANDING}/privos-wallpaper-dark.png" "${WALL}/privos-dark.png"
 
 # Die GNOME-Einstellungen liegen als Standard vor und bleiben für Nutzer veränderbar.
 glib-compile-schemas /usr/share/glib-2.0/schemas
@@ -49,6 +94,6 @@ dconf update
 THEME=/usr/share/plymouth/themes/privos
 find /usr/share/plymouth/themes/spinner -name '*.png' ! -name 'watermark.png' -exec cp -t "${THEME}" {} +
 rm -f "${THEME}"/throbber-*.png
-python3 "${BRANDING}/make-boot-spinner.py" "${THEME}"
+python3 "${BRANDING}/make-boot-progress.py" "${THEME}"
 render "${BRANDING}/privos-logo-boot.svg" 128 128 "${THEME}/watermark.png"
 sed -i 's/^Theme=.*/Theme=privos/' /usr/share/plymouth/plymouthd.defaults

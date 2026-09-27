@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+# Den Installationsstarter nur im temporären Live-Konto auf den Desktop legen.
+set -euo pipefail
+
+desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+if [[ -z "${desktop_dir}" || "${desktop_dir}" == "${HOME}" ]]; then
+    desktop_dir="${HOME}/Desktop"
+fi
+
+install -d -m 700 "${desktop_dir}"
+launcher="${desktop_dir}/Privos installieren.desktop"
+install -m 755 /usr/share/applications/privos-install.desktop "${launcher}"
+gio set "${launcher}" metadata::trusted true || true

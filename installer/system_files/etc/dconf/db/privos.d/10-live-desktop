@@ -1,0 +1,8 @@
+[org/gnome/shell]
+enabled-extensions=['dash-to-panel@jderose9.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'arcmenu@arcmenu.com', 'gtk4-ding@smedius.gitlab.com']
+
+[org/gnome/shell/extensions/gtk4-ding]
+show-home=false
+show-trash=false
+show-volumes=false
+show-network-volumes=false

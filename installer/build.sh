@@ -34,6 +34,15 @@ podman pull "${PAYLOAD_REF}"
 # --- Live-spezifische Dateien ----------------------------------------------------------
 cp -a "${SRC}/system_files/." /
 
+# Cockpit wählt das Branding anhand von ID=privos. Das Logo stammt aus dem
+# bereits gebauten Privos-Image; der Installer zeigt damit kein Fedora-Symbol.
+install -m644 /usr/share/pixmaps/privos-logo.png \
+    /usr/share/cockpit/branding/privos/logo.png
+
+# Nur die Live-Umgebung zeigt einen kurzen Produktnamen im Installer-Kopf.
+# Das installierte Payload-Image behält seine vollständige Versionsbezeichnung.
+sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Privos"/' /usr/lib/os-release
+
 # Im Live-System darf nouveau einspringen, falls der NVIDIA-Treiber nicht lädt
 # (z. B. bei Secure Boot vor der Schlüssel-Registrierung). Installiert wird trotzdem NVIDIA.
 sed -i '/^blacklist nouveau/d; /^blacklist nova-core/d' /usr/lib/modprobe.d/nvidia.conf
@@ -56,6 +65,22 @@ systemctl enable livesys.service livesys-late.service
 # --- Installer (Anaconda) --------------------------------------------------------------
 dnf install -y --allowerasing anaconda-live libblockdev-{btrfs,lvm,dm} python3-gobject gtk4 libadwaita
 mkdir -p /var/lib/rpm-state
+test -s /usr/share/cockpit/branding/privos/branding.css
+test -s /usr/share/cockpit/branding/privos/logo.png
+
+# GNOME zeigt Desktop-Dateien nicht von selbst an. Gtk4 DING 100.29 unterstützt GNOME 50.
+# Die feste Version und Prüfsumme halten den Live-Desktop reproduzierbar.
+DING_DIR=/usr/share/gnome-shell/extensions/gtk4-ding@smedius.gitlab.com
+DING_ZIP=/tmp/privos-gtk4-ding.zip
+curl --fail --location --retry 3 \
+    'https://extensions.gnome.org/download-extension/gtk4-ding@smedius.gitlab.com.shell-extension.zip?version_tag=75162' \
+    -o "${DING_ZIP}"
+echo "4a884fa3976aeb814726fd96428c09cfeca2da01aec3ac8629ddd6cd22bff2c1  ${DING_ZIP}" | sha256sum -c -
+mkdir -p "${DING_DIR}"
+python3 -m zipfile -e "${DING_ZIP}" "${DING_DIR}"
+glib-compile-schemas "${DING_DIR}/schemas"
+rm -f "${DING_ZIP}"
+dconf update
 
 cat >> /usr/share/anaconda/interactive-defaults.ks <<EOF
 

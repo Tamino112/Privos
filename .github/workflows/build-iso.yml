@@ -32,7 +32,16 @@ jobs:
       contents: read
       packages: read
     steps:
+      - name: Freien Speicher prüfen
+        id: space
+        run: |
+          available_kib="$(df -Pk / | awk 'NR == 2 { print $4 }')"
+          if (( available_kib < 50 * 1024 * 1024 )); then
+            echo 'cleanup=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Speicherplatz freimachen
+        if: steps.space.outputs.cleanup == 'true'
         uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           tool-cache: true
@@ -82,24 +91,28 @@ jobs:
         if: always()
         run: sudo df -h
 
-      # Titanoboa ruft realpath ohne -m auf: die Zieldatei muss bereits existieren.
-      # Ein Ziel außerhalb von github.workspace bleibt dabei ein absoluter Pfad.
-      - name: ISO-Ziel vorbereiten
+      # Titanoboa ist auf diesen Commit und dessen Prüfsumme fixiert.
+      # Nur die Zstandard-Stufe ändert sich: Stufe 19 brauchte rund 6 Minuten
+      # für das SquashFS, obwohl das eingebettete Image bereits komprimiert ist.
+      - name: ISO erzeugen (Titanoboa, schnelle Kompression)
         run: |
-          mkdir -p "${RUNNER_TEMP}/privos-iso"
-          touch "${RUNNER_TEMP}/privos-iso/${{ steps.ref.outputs.iso }}"
-
-      - name: ISO erzeugen (Titanoboa)
-        id: build
-        uses: ublue-os/titanoboa@5c457c3d0518bd17e754be0fd98a60d29d26abb4
-        with:
-          image-ref: localhost/privos-live:latest
-          iso-dest: ${{ runner.temp }}/privos-iso/${{ steps.ref.outputs.iso }}
-
-      - name: ISO ins Upload-Verzeichnis verschieben
-        run: |
-          mkdir -p upload
-          mv "${RUNNER_TEMP}/privos-iso/${{ steps.ref.outputs.iso }}" "upload/${{ steps.ref.outputs.iso }}"
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/privos-iso" upload
+          script="${RUNNER_TEMP}/privos-build_iso.sh"
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/ublue-os/titanoboa/5c457c3d0518bd17e754be0fd98a60d29d26abb4/build_iso.sh' \
+            -o "$script"
+          echo "a73e0a11731880bc6272650371427564aaf565d5dc0d9e51dd793d79b351dcba  $script" | sha256sum -c -
+          sed -i 's/-Xcompression-level 19/-Xcompression-level 3/' "$script"
+          grep -Fq -- '-comp zstd -Xcompression-level 3' "$script"
+          sudo podman run --rm -i \
+            --cap-add sys_admin --security-opt label=disable \
+            -v "$script:/src/build_iso.sh:ro" \
+            --mount type=image,source=localhost/privos-live:latest,dst=/rootfs \
+            -v "${RUNNER_TEMP}/privos-iso:/output" \
+            quay.io/fedora/fedora:latest /src/build_iso.sh
+          sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/privos-iso/Privos-Live.iso"
+          mv "${RUNNER_TEMP}/privos-iso/Privos-Live.iso" "upload/${{ steps.ref.outputs.iso }}"
           test -s "upload/${{ steps.ref.outputs.iso }}"
 
       - name: Prüfsumme

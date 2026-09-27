@@ -1,25 +1,27 @@
 [org.gnome.desktop.interface]
 color-scheme='prefer-dark'
+accent-color='teal'
 icon-theme='Papirus-Dark'
 font-name='Inter 11'
 document-font-name='Inter 11'
 monospace-font-name='JetBrains Mono 10'
 
 [org.gnome.desktop.background]
-picture-uri='file:///usr/share/backgrounds/privos/privos-light.png'
-picture-uri-dark='file:///usr/share/backgrounds/privos/privos-dark.png'
+picture-uri='file:///usr/share/backgrounds/privos/privos-default.png'
+picture-uri-dark='file:///usr/share/backgrounds/privos/privos-default.png'
 picture-options='zoom'
 
 [org.gnome.desktop.screensaver]
-picture-uri='file:///usr/share/backgrounds/privos/privos-dark.png'
+picture-uri='file:///usr/share/backgrounds/privos/privos-default.png'
 
 [org.gnome.shell]
-enabled-extensions=['dash-to-panel@jderose9.github.com', 'appindicatorsupport@rgcjonas.gmail.com']
+enabled-extensions=['dash-to-panel@jderose9.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'arcmenu@arcmenu.com']
 favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Software.desktop']
 
 [org.gnome.shell.extensions.dash-to-panel]
 panel-position='BOTTOM'
 panel-size=52
+panel-element-positions='{"0":[{"element":"showAppsButton","visible":false,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":true,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":true,"position":"stackedBR"},{"element":"rightBox","visible":true,"position":"stackedBR"},{"element":"dateMenu","visible":true,"position":"stackedBR"},{"element":"systemMenu","visible":true,"position":"stackedBR"},{"element":"desktopButton","visible":true,"position":"stackedBR"}]}'
 stockgs-keep-top-panel=false
 trans-use-custom-bg=true
 trans-bg-color='#15272f'

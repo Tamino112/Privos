@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Privos
-Description=Privos-Bootanimation: helles Zeichen und dezenter Punktring auf dunklem Grund
+Description=Privos-Bootanimation: helles Zeichen und schmale Ladeleiste auf dunklem Grund
 ModuleName=two-step
 
 [two-step]
@@ -12,7 +12,7 @@ DialogVerticalAlignment=.382
 TitleHorizontalAlignment=.5
 TitleVerticalAlignment=.382
 HorizontalAlignment=.5
-VerticalAlignment=.72
+VerticalAlignment=.61
 WatermarkHorizontalAlignment=.5
 WatermarkVerticalAlignment=.45
 Transition=none

@@ -1,0 +1,190 @@
+/* Privos branding for the Anaconda Web UI. Cockpit loads this after index.css. */
+.anaconda {
+    --brand-default-light: #66b8c8;
+    --brand-default: #176778;
+    --brand-default-dark: #105364;
+    --privos-accent: #176778;
+    --privos-accent-hover: #105364;
+    --privos-accent-light: #66b8c8;
+    --privos-surface: #ffffff;
+    --privos-subtle: #f5f8fa;
+    --privos-border: #e2e9ed;
+    --privos-text: #172a34;
+
+    --pf-t--global--color--brand--default: var(--privos-accent);
+    --pf-t--global--color--brand--hover: var(--privos-accent-hover);
+    font-family: Inter, "Red Hat Text", sans-serif;
+}
+
+.anaconda .logo {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    background-image: url("logo.png");
+    background-size: contain;
+    background-position: center;
+    filter: none;
+    mix-blend-mode: normal;
+}
+
+/* The upstream stylesheet adds a large Fedora-blue gradient to this header. */
+.anaconda .pf-v6-c-page__main-group > .pf-v6-c-page__main-section:first-child {
+    --_text: var(--privos-text);
+    background: var(--privos-surface);
+    border-bottom: 1px solid var(--privos-border);
+    padding-block: 17px;
+    padding-inline: clamp(20px, 3vw, 42px);
+    box-shadow: none;
+}
+
+.anaconda .pf-v6-c-page__main-group > .pf-v6-c-page__main-section:first-child .pf-v6-c-content {
+    --pf-v6-c-content--Color: var(--privos-text);
+}
+
+.anaconda .pf-v6-c-page__main-group > .pf-v6-c-page__main-section:first-child h1 {
+    color: var(--privos-text);
+    font-family: Inter, "Red Hat Display", sans-serif;
+    font-size: clamp(17px, 1.5vw, 20px);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+}
+
+.anaconda #toggle-kebab path {
+    fill: var(--privos-text);
+}
+
+.anaconda .pf-v6-c-wizard__nav {
+    background: var(--privos-subtle);
+    border-inline-end: 1px solid var(--privos-border);
+    padding: 18px 12px;
+}
+
+.anaconda .pf-v6-c-wizard__nav-link {
+    border-radius: 9px;
+    font-weight: 500;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.anaconda .pf-v6-c-wizard__nav-link:hover {
+    background: #e8f0f3;
+}
+
+.anaconda .pf-v6-c-wizard__nav-link.pf-m-current {
+    background: #e1eff2;
+    color: var(--privos-accent-hover);
+    font-weight: 600;
+}
+
+.anaconda .pf-v6-c-wizard__nav-link.pf-m-current::before {
+    background: var(--privos-accent);
+}
+
+.anaconda .pf-v6-c-wizard__main {
+    background: var(--privos-surface);
+}
+
+.anaconda .pf-v6-c-wizard__main-body {
+    padding: clamp(24px, 3.5vw, 48px);
+}
+
+.anaconda .pf-v6-c-wizard__footer {
+    background: var(--privos-surface);
+    border-top: 1px solid var(--privos-border);
+    padding-block: 16px;
+}
+
+.anaconda .pf-v6-c-button,
+.anaconda .pf-v6-c-form-control,
+.anaconda .pf-v6-c-card,
+.anaconda .pf-v6-c-alert {
+    border-radius: 9px;
+}
+
+.anaconda .pf-v6-c-button.pf-m-primary {
+    background: var(--privos-accent);
+}
+
+.anaconda .pf-v6-c-button.pf-m-primary:hover {
+    background: var(--privos-accent-hover);
+}
+
+.pf-v6-theme-dark .anaconda {
+    --brand-default-light: #86cedb;
+    --brand-default: #66b8c8;
+    --brand-default-dark: #318fa2;
+    --privos-accent: #66b8c8;
+    --privos-accent-hover: #86cedb;
+    --privos-surface: #141e27;
+    --privos-subtle: #101922;
+    --privos-border: #2c3c47;
+    --privos-text: #eff5f6;
+    --pf-t--global--color--brand--default: var(--privos-accent);
+    --pf-t--global--color--brand--hover: var(--privos-accent-hover);
+}
+
+.pf-v6-theme-dark .anaconda .logo {
+    filter: brightness(0) invert(1);
+}
+
+.pf-v6-theme-dark .anaconda .pf-v6-c-wizard__nav-link:hover {
+    background: #20313b;
+}
+
+.pf-v6-theme-dark .anaconda .pf-v6-c-wizard__nav-link.pf-m-current {
+    background: #243b45;
+    color: #a3d9e3;
+}
+
+.pf-v6-theme-dark .anaconda .pf-v6-c-button.pf-m-primary {
+    background: #318fa2;
+    color: #ffffff;
+}
+
+.pf-v6-theme-dark .anaconda .pf-v6-c-button.pf-m-primary:hover {
+    background: #247b8e;
+}
+
+@media (max-width: 720px) {
+    .anaconda .pf-v6-c-page__main-group > .pf-v6-c-page__main-section:first-child {
+        padding-block: 14px;
+        padding-inline: 18px;
+    }
+
+    .anaconda .pf-v6-c-wizard__main-body {
+        padding: 22px 18px;
+    }
+}
+
+/* Sanfte Animationen: Inhalte blenden weich ein, Controls reagieren flüssig. */
+@keyframes privos-rise {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.anaconda .pf-v6-c-wizard__main-body {
+    animation: privos-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.anaconda .pf-v6-c-button,
+.anaconda .pf-v6-c-card,
+.anaconda .pf-v6-c-form-control {
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.anaconda .pf-v6-c-wizard__nav-item {
+    border-radius: 9px;
+    transition: background-color 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .anaconda .pf-v6-c-wizard__main-body {
+        animation: none;
+    }
+}

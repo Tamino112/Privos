@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Privos Live-Desktop einrichten
+Exec=/usr/bin/bash /usr/bin/privos-live-desktop
+OnlyShowIn=GNOME;
+NoDisplay=true
+X-GNOME-Autostart-Delay=2

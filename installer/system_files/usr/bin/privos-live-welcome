@@ -9,7 +9,14 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gdk, GLib, Gtk
+
+try:
+    from gi.repository import Graphene, Gsk
+
+    HAS_TRANSFORM = True
+except (ImportError, ValueError):
+    HAS_TRANSFORM = False
 
 
 GERMAN = (locale.getlocale()[0] or os.environ.get("LANG", "")).startswith("de")
@@ -19,81 +26,299 @@ def message(de, en):
     return de if GERMAN else en
 
 
-def hardware_note():
-    notes = []
-    if not os.path.isdir("/sys/firmware/efi"):
-        notes.append(message(
-            "Dieser PC wurde im Legacy-Modus gestartet. Für die Installation bitte UEFI aktivieren.",
-            "This PC booted in legacy mode. Enable UEFI before installing."))
+CSS = """
+.welcome-title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.welcome-subtitle {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: alpha(currentColor, 0.58);
+}
+
+.welcome-primary {
+    min-height: 46px;
+    min-width: 280px;
+    padding: 0 32px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.welcome-secondary {
+    min-height: 38px;
+    padding: 0 24px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.welcome-check {
+    border: 1px solid alpha(currentColor, 0.09);
+    border-radius: 12px;
+    padding: 10px 16px;
+    background: alpha(currentColor, 0.03);
+}
+
+.welcome-check-label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: alpha(currentColor, 0.72);
+}
+
+.welcome-dot {
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 999px;
+    margin-right: 10px;
+}
+
+.welcome-dot-ok {
+    background: @accent_bg_color;
+}
+
+.welcome-dot-warn {
+    background: #e5a50a;
+}
+
+.welcome-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: alpha(currentColor, 0.45);
+}
+"""
+
+
+class RevealAnimation:
+    """Sanftes Einblenden: Fade + leichter Hochschub, per Frame getaktet."""
+
+    DURATION_MS = 420
+
+    def __init__(self, widget, delay_ms):
+        self.widget = widget
+        self.start_time = None
+        widget.set_opacity(0.0)
+        if HAS_TRANSFORM:
+            widget.set_transform(self._translate(14))
+        GLib.timeout_add(delay_ms, self._begin)
+
+    @staticmethod
+    def _translate(offset):
+        if not HAS_TRANSFORM:
+            return None
+        point = Graphene.Point()
+        point.x = 0.0
+        point.y = offset
+        return Gsk.Transform().translate(point)
+
+    def _begin(self):
+        self.start_time = None
+        self.widget.add_tick_callback(self._on_frame)
+        return GLib.SOURCE_REMOVE
+
+    def _on_frame(self, widget, frame_clock):
+        now = frame_clock.get_frame_time()
+        if self.start_time is None:
+            self.start_time = now
+        t = min(1.0, (now - self.start_time) / (self.DURATION_MS * 1000))
+        eased = 1.0 - (1.0 - t) ** 3
+        widget.set_opacity(eased)
+        if HAS_TRANSFORM:
+            widget.set_transform(self._translate(14.0 * (1.0 - eased)))
+        if t >= 1.0:
+            widget.set_opacity(1.0)
+            if HAS_TRANSFORM:
+                widget.set_transform(None)
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
+
+
+def hardware_checks():
+    checks = []
+    if os.path.isdir("/sys/firmware/efi"):
+        checks.append((True, message(
+            "UEFI-Modus aktiv",
+            "UEFI mode active")))
+    else:
+        checks.append((False, message(
+            "Legacy-Start erkannt – für die Installation UEFI aktivieren",
+            "Legacy boot detected – enable UEFI before installing")))
     try:
         with open("/proc/meminfo", encoding="ascii") as memory:
             memory_kib = int(next(line.split()[1] for line in memory if line.startswith("MemTotal:")))
-        if memory_kib < 7_500_000:
-            notes.append(message(
-                "Weniger als 8 GB Arbeitsspeicher erkannt. Die Installation kann fehlschlagen.",
-                "Less than 8 GB of memory detected. Installation may fail."))
+        gib = memory_kib / 1_048_576
+        if memory_kib >= 7_500_000:
+            checks.append((True, message(
+                f"{gib:.0f} GB Arbeitsspeicher erkannt",
+                f"{gib:.0f} GB of memory detected")))
+        else:
+            checks.append((False, message(
+                f"Nur {gib:.1f} GB RAM – die Installation kann fehlschlagen",
+                f"Only {gib:.1f} GB RAM – installation may fail")))
     except (OSError, StopIteration, ValueError):
         pass
-    return "\n".join(notes)
+    return checks
 
 
 class Welcome(Adw.Application):
     def __init__(self):
         super().__init__(application_id="org.privos.LiveWelcome")
+        self._window = None
 
     def do_activate(self):
-        window = self.props.active_window
-        if window:
-            window.present()
+        if self._window:
+            self._window.present()
             return
+        self._window = self._build_window()
+        self._window.present()
+        self._animate_in()
 
+    def _build_window(self):
         window = Adw.ApplicationWindow(application=self)
-        window.set_title(message("Willkommen bei Privos", "Welcome to Privos"))
-        window.set_default_size(620, 480)
+        window.connect("destroy", self._on_window_destroy)
+        window.set_title(message("Privos installieren", "Install Privos"))
+        window.set_default_size(660, 600)
+        window.set_resizable(False)
 
-        page = Adw.StatusPage()
-        page.set_icon_name("privos-logo")
-        page.set_title(message("Willkommen bei Privos", "Welcome to Privos"))
-        page.set_description(message(
-            "Entdecke Privos in Ruhe oder beginne direkt mit der Installation.",
-            "Explore Privos at your own pace or start installing now."))
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS, -1)
+        Gtk.StyleContext.add_provider_for_display(
+            window.get_display(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        content.set_halign(Gtk.Align.CENTER)
-        content.set_margin_top(16)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        content.add_css_class("welcome-page")
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        actions.set_halign(Gtk.Align.CENTER)
-        try_button = Gtk.Button(label=message("Privos ausprobieren", "Try Privos"))
-        try_button.connect("clicked", lambda _button: window.close())
+        clamp = Adw.Clamp(maximum_size=480, tightening_threshold=400)
+        clamp.set_valign(Gtk.Align.CENTER)
+        clamp.set_vexpand(True)
+        content.append(clamp)
+
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        column.set_margin_top(48)
+        column.set_margin_bottom(48)
+        column.set_margin_start(40)
+        column.set_margin_end(40)
+        clamp.set_child(column)
+
+        self._logo_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._logo_box.set_halign(Gtk.Align.CENTER)
+        logo = Gtk.Image.new_from_icon_name("privos-logo")
+        logo.set_pixel_size(112)
+        self._logo_box.append(logo)
+        column.append(self._logo_box)
+
+        self._text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        title = Gtk.Label(label=message("Willkommen bei Privos", "Welcome to Privos"))
+        title.add_css_class("welcome-title")
+        self._text_box.append(title)
+        subtitle = Gtk.Label(label=message(
+            "Entdecke Privos in Ruhe oder beginne direkt\nmit der Installation.",
+            "Explore Privos at your own pace or start\ninstalling right away."))
+        subtitle.add_css_class("welcome-subtitle")
+        self._text_box.append(subtitle)
+        column.append(self._text_box)
+
+        self._actions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self._actions_box.set_halign(Gtk.Align.CENTER)
         install_button = Gtk.Button(label=message("Privos installieren", "Install Privos"))
         install_button.add_css_class("suggested-action")
-        install_button.connect("clicked", self.install, window)
-        actions.append(try_button)
-        actions.append(install_button)
-        content.append(actions)
+        install_button.add_css_class("welcome-primary")
+        install_button.connect("clicked", self.install)
+        self._actions_box.append(install_button)
+        try_button = Gtk.Button(label=message("Erst ausprobieren", "Try it first"))
+        try_button.add_css_class("flat")
+        try_button.add_css_class("welcome-secondary")
+        try_button.connect("clicked", self._fade_out_and_close)
+        self._actions_box.append(try_button)
+        column.append(self._actions_box)
 
-        note = hardware_note()
-        if note:
-            warning = Gtk.Label(label=note)
-            warning.set_wrap(True)
-            warning.set_max_width_chars(64)
-            warning.add_css_class("warning")
-            content.append(warning)
+        checks = hardware_checks()
+        if checks:
+            self._checks_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            self._checks_box.set_halign(Gtk.Align.CENTER)
+            for ok, label in checks:
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+                row.add_css_class("welcome-check")
+                dot = Gtk.Box()
+                dot.add_css_class("welcome-dot")
+                dot.add_css_class("welcome-dot-ok" if ok else "welcome-dot-warn")
+                dot.set_valign(Gtk.Align.CENTER)
+                row.append(dot)
+                text = Gtk.Label(label=label)
+                text.add_css_class("welcome-check-label")
+                row.append(text)
+                self._checks_box.append(row)
+            column.append(self._checks_box)
+        else:
+            self._checks_box = None
 
+        self._hint_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._hint_box.set_halign(Gtk.Align.CENTER)
         hint = Gtk.Label(label=message(
             "Der vollständige NVIDIA-Treiber steht nach der Installation bereit.",
             "The full NVIDIA driver is available after installation."))
+        hint.add_css_class("welcome-hint")
         hint.set_wrap(True)
-        hint.add_css_class("dim-label")
-        content.append(hint)
-        page.set_child(content)
-        window.set_content(page)
-        window.present()
+        hint.set_max_width_chars(56)
+        hint.set_justify(Gtk.Justification.CENTER)
+        self._hint_box.append(hint)
+        column.append(self._hint_box)
 
-    def install(self, _button, window):
+        window.set_content(content)
+        window.set_default_widget(install_button)
+
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self._on_key_pressed)
+        window.add_controller(key_controller)
+
+        self._install_button = install_button
+        return window
+
+    def _on_window_destroy(self, _window):
+        self._window = None
+
+    def _animate_in(self):
+        delay = 120
+        step = 90
+        for widget in (self._logo_box, self._text_box, self._actions_box):
+            RevealAnimation(widget, delay)
+            delay += step
+        if self._checks_box is not None:
+            RevealAnimation(self._checks_box, delay)
+            delay += step
+        RevealAnimation(self._hint_box, delay)
+
+    def _on_key_pressed(self, _controller, keyval, _keycode, _state):
+        if keyval in (Gdk.KEY_Escape,):
+            self._fade_out_and_close()
+            return Gdk.EVENT_STOP
+        return Gdk.EVENT_PROPAGATE
+
+    def _fade_out_and_close(self, *_args):
+        window = self._window
+        start = [None]
+
+        def on_frame(_widget, frame_clock):
+            now = frame_clock.get_frame_time()
+            if start[0] is None:
+                start[0] = now
+            t = min(1.0, (now - start[0]) / 180000)
+            window.set_opacity(1.0 - t)
+            if t >= 1.0:
+                window.close()
+                return GLib.SOURCE_REMOVE
+            return GLib.SOURCE_CONTINUE
+
+        window.add_tick_callback(on_frame)
+
+    def install(self, _button):
         subprocess.Popen(["liveinst"], start_new_session=True)
-        window.close()
+        if self._window:
+            self._window.close()
 
 
 if __name__ == "__main__":

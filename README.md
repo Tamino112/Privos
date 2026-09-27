@@ -10,8 +10,10 @@ vorherige Version.
 
 > Status: **Phase 1 (NVIDIA) + eigene Live-ISO mit Privos-Design**. Siehe [Projektplan](docs/PLAN.md).
 
-Der Desktop nutzt GNOME mit einer Leiste am unteren Bildschirmrand, ruhigen hellen und dunklen
-Hintergründen, Inter-Schrift und Papirus-Icons. Die Standardwerte lassen sich in GNOME ändern.
+Der Desktop nutzt GNOME mit einer Leiste am unteren Bildschirmrand, einem Privos-Startknopf
+(auch über die Super-/Windows-Taste), dem hellblauen Standardhintergrund, Inter-Schrift
+und Papirus-Icons. „Privos Software“ behält die GNOME-Software-Funktionen und bekommt ein
+eigenes Symbol sowie den petrolfarbenen GNOME-Akzent. Die Standardwerte lassen sich in GNOME ändern.
 
 ## Was Privos für NVIDIA macht
 
@@ -52,7 +54,7 @@ Damit installierte PCs sie abrufen können, muss das Paket auf GitHub **öffentl
 
 ```
 Containerfile            Das OS: Basis-Image + Build-Schritte
-branding/                Logo, Wallpaper (SVG) und Plymouth-Animation
+branding/                Logo, ImageGen-Wallpaper (PNG) und Plymouth-Animation
 installer/               Live-ISO: Live-System, Installer (Anaconda), Willkommensfenster
 build_files/             Build-Skripte (Pakete, NVIDIA, Speicherschutz, Initramfs)
 system_files/            Dateien, die 1:1 ins System kopiert werden (/usr, /etc)

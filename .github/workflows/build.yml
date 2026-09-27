@@ -91,12 +91,17 @@ jobs:
             test -x /usr/bin/privos-gpu-check
             grep -q '^ID=privos' /usr/lib/os-release
             test "$(plymouth-set-default-theme)" = privos
-            rpm -q gnome-shell gnome-shell-extension-dash-to-panel gnome-shell-extension-appindicator
+            rpm -q gnome-shell gnome-shell-extension-dash-to-panel gnome-shell-extension-appindicator gnome-menus gnome-software
             test -f /usr/share/backgrounds/privos/privos-dark.png
             test -f /usr/share/backgrounds/privos/privos-light.png
+            test -f /usr/share/backgrounds/privos/privos-default.png
+            test -f /usr/share/pixmaps/privos-software.png
+            test -f /usr/share/gnome-shell/extensions/arcmenu@arcmenu.com/metadata.json
+            grep -q '^Icon=/usr/share/pixmaps/privos-software.png$' /usr/share/applications/org.gnome.Software.desktop
             test -f /usr/share/glib-2.0/schemas/zzzz_privos.gschema.override
             test -f /etc/dconf/db/privos
             GSETTINGS_BACKEND=memory gsettings get org.gnome.shell enabled-extensions | grep -q dash-to-panel
+            GSETTINGS_BACKEND=memory gsettings get org.gnome.shell enabled-extensions | grep -q arcmenu
             systemctl is-enabled privos-vram-guard.service
             systemctl is-enabled privos-vram-budget.service
             test -x /usr/lib/systemd/user-environment-generators/60-privos-vram-budget

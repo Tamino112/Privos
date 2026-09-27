@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Install Privos
+Name[de]=Privos installieren
+Comment=Install Privos on this computer
+Comment[de]=Privos auf diesem Computer installieren
+Exec=liveinst
+Icon=privos-logo
+Terminal=false
+Categories=System;
+StartupNotify=true
+OnlyShowIn=GNOME;
