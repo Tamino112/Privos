@@ -1,2 +1,4 @@
 user-db:user
 system-db:privos
+system-db:distro
+system-db:local
