@@ -22,7 +22,7 @@ Das fertige Image wird von GitHub Actions nach GHCR (`ghcr.io/tamino112/privos-n
 
 Am 27.09.2026 wurden OS-Image, Live-Image und ISO lokal unter Ubuntu/WSL2 mit Podman erfolgreich gebaut. `bootc container lint` bestand 14 Prüfungen. Die lokale ISO war 6.665.021.440 Byte groß; SHA-256: `2bee14a4fd73f9057725f51935c8fb290f7ed25997ba0ee454ec8459160d3287`. Die Windows-Kopie hatte dieselbe Prüfsumme. ISO9660-Signatur und UEFI-El-Torito-Eintrag wurden geprüft. Ein tatsächlicher Boot und eine Installation auf Hardware sind noch offen.
 
-Die lokale ISO wurde danach erfolgreich mit QEMU/KVM unter WSL 2 gebootet; GNOME und das Privos-Willkommensfenster waren sichtbar. Die Installation auf die virtuelle Festplatte steht noch aus. `scripts/start-privos-vm.ps1` startet den Installer einmalig mit `-Install` und danach die persistente VM ohne ISO.
+Die lokale ISO wurde danach erfolgreich mit QEMU/KVM unter WSL 2 gebootet; GNOME und das Privos-Willkommensfenster waren sichtbar. Die Installation auf die virtuelle Festplatte steht noch aus. `scripts/start-privos-vm.ps1 -Live` zeigt das Live-System jederzeit ohne neuen Build; eine Installation ist für die Vorschau nicht nötig. Nach einer optionalen Installation startet das Skript ohne Schalter die persistente VM ohne ISO.
 
 Der lokale ISO-Build benutzte eine nur in der WSL-Buildkopie geänderte `installer/build.sh`, damit der Offline-Payload aus einer lokalen Registry gezogen werden konnte. Die Repo-Datei verwendet weiterhin den GitHub-Registry-Ref. Der GitHub-Workflow ist der reguläre Weg für neue ISO-Artefakte.
 

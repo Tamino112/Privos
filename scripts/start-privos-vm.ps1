@@ -1,5 +1,6 @@
 param(
-    [switch]$Install
+    [Alias('Install')]
+    [switch]$Live
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,7 +42,7 @@ $qemuArgs = @(
     '-device', 'virtio-net-pci,netdev=net0'
 )
 
-if ($Install) {
+if ($Live) {
     & wsl.exe -d $distro -u root -- test -f $iso
     if ($LASTEXITCODE -ne 0) { throw "Die einmalig benötigte ISO fehlt in WSL: $iso" }
     $qemuArgs += @('-cdrom', $iso, '-boot', 'order=d')

@@ -76,17 +76,16 @@ python3 -m unittest discover -s tests -v
 ## Ohne neue ISO in einer VM testen
 
 Auf dem eingerichteten Windows-PC startet `scripts/start-privos-vm.ps1` Privos in
-QEMU/KVM über WSL 2. Die virtuelle Festplatte liegt unter
-`/root/privos-vm/privos.qcow2` in Ubuntu und bleibt nach dem Schließen erhalten.
-
-Beim ersten Mal die vorhandene ISO booten und Privos auf der virtuellen
-80-GB-Festplatte installieren:
+QEMU/KVM über WSL 2. Zum bloßen Anschauen reicht der Live-Start mit der bereits
+gebauten ISO. Dabei wird nichts neu gebaut und keine Installation benötigt:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1 -Install
+powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1 -Live
 ```
 
-Danach startet die installierte VM ohne ISO:
+Optional kann Privos aus dem Live-System auf die virtuelle 80-GB-Festplatte
+installiert werden. Diese liegt unter `/root/privos-vm/privos.qcow2` in Ubuntu
+und bleibt nach dem Schließen erhalten. Danach startet die installierte VM ohne ISO:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-privos-vm.ps1
