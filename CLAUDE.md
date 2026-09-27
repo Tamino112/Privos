@@ -35,3 +35,4 @@ Der lokale ISO-Build benutzte eine nur in der WSL-Buildkopie geänderte `install
 - Aktuellen Branch und GitHub-Standardbranch vor dem Push prüfen. Repo: `https://github.com/Tamino112/Privos`.
 
 Weitere Produktdetails stehen in `README.md`, `docs/PLAN.md` und `system_files/usr/share/doc/privos/NVIDIA.md`.
+Die vollständige Übergabe für die Arbeit auf einem anderen PC steht in `docs/WEITERARBEITEN-ANDERER-PC.md`.
