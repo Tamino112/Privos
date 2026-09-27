@@ -12,7 +12,7 @@ SIZE = 48
 DOTS = 12
 RING_RADIUS = 15
 DOT_RADIUS = 2.5
-COLOR = (169, 156, 247)
+COLOR = (180, 210, 212)
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:

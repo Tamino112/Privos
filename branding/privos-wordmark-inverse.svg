@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160" role="img" aria-label="Privos">
   <title>Privos wordmark for dark backgrounds</title>
   <g transform="translate(0 8) scale(.56)">
-    <path fill="#A99CF7" fill-rule="evenodd" d="M65 28h86c50 0 79 27 79 70s-29 71-79 71H99v29l-18 31H48V45zM99 73v50h50c21 0 33-9 33-25s-12-25-33-25z"/>
+    <path fill="#F6F8F6" d="M71 20h70c54 0 94 40 94 93s-40 94-94 94h-12c-15 0-24-9-24-22 0-10 6-17 15-22l54-30c12-7 12-20 0-27L64 64c-6-3-9-9-9-16V36c0-9 7-16 16-16z"/>
+    <path fill="#F6F8F6" d="M56 90c-11-5-20 3-20 14v110c0 13 9 22 22 22h24c13 0 22-9 22-22v-44c0-8 4-13 11-17l26-14c11-6 11-19 0-25L56 90z"/>
   </g>
-  <text x="158" y="111" fill="#F8F8FF" font-family="Inter, DejaVu Sans, sans-serif" font-size="84" font-weight="600" letter-spacing="-3">Privos</text>
+  <text x="158" y="111" fill="#F6F8F6" font-family="Inter, DejaVu Sans, sans-serif" font-size="84" font-weight="600" letter-spacing="-3">Privos</text>
 </svg>

@@ -1,27 +1,27 @@
 #!/usr/bin/python3
 """Erzeugt das Farbschema "Privos Dark" aus Breeze Dark.
 
-Breeze-Blau wird durch das Privos-Violett ersetzt, die Grautöne werden etwas dunkler und
-kühler. Alle anderen Werte (Kontraste, Warn-/Fehlerfarben) bleiben wie in Breeze.
+Breeze-Blau wird durch Petrol und kühles Türkis ersetzt, die Grautöne werden
+etwas dunkler. Alle anderen Werte (Kontraste, Warn-/Fehlerfarben) bleiben wie in Breeze.
 """
 
 import re
 import sys
 
 REPLACEMENTS = {
-    # Akzent: Breeze-Blau -> Privos-Violett
-    "61,174,233": "139,92,246",
-    "29,153,243": "167,139,250",
-    "30,87,116": "76,52,150",
-    "147,206,233": "196,181,253",
-    # Hintergründe: dunkler und leicht bläulich
-    "32,35,38": "22,24,31",
-    "41,44,48": "30,32,41",
-    "20,22,24": "15,16,22",
-    "29,31,34": "21,23,30",
-    "49,54,59": "36,39,50",
-    "35,38,41": "25,27,35",
-    "27,30,32": "19,20,27",
+    # Akzent: Breeze-Blau -> Privos-Petrol/Türkis
+    "61,174,233": "76,167,183",
+    "29,153,243": "142,203,211",
+    "30,87,116": "25,77,88",
+    "147,206,233": "185,222,225",
+    # Hintergründe: dunkles, neutrales Schiefergrau
+    "32,35,38": "20,29,33",
+    "41,44,48": "28,39,43",
+    "20,22,24": "13,22,26",
+    "29,31,34": "20,30,34",
+    "49,54,59": "37,51,55",
+    "35,38,41": "24,35,39",
+    "27,30,32": "18,27,31",
 }
 
 

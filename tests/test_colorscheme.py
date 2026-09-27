@@ -33,9 +33,9 @@ class ColorSchemeTests(unittest.TestCase):
     def test_accent_and_background_replaced(self):
         out = mc.convert(SAMPLE)
         self.assertNotIn("61,174,233", out)
-        self.assertIn("BackgroundNormal=139,92,246", out)
-        self.assertIn("BackgroundNormal=22,24,31", out)
-        self.assertIn("ForegroundLink=167,139,250", out)
+        self.assertIn("BackgroundNormal=76,167,183", out)
+        self.assertIn("BackgroundNormal=20,29,33", out)
+        self.assertIn("ForegroundLink=142,203,211", out)
 
     def test_unrelated_values_untouched(self):
         out = mc.convert(SAMPLE)

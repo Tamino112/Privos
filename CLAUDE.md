@@ -93,7 +93,7 @@ Der Nutzer spricht Deutsch. Antworten, Doku und UI-Texte sind deshalb auf Deutsc
 
 ### Branding
 
-- Violett (#8B5CF6) → Cyan, dunkles Design „Privos Dark“.
+- Petrolblau (#176778), Schiefergrau und gebrochenes Weiß, dunkles Design „Privos Dark“.
 - Look-and-Feel `org.privos.desktop` mit Privos-Logo im Startmenü.
 - Plymouth-Theme `privos`.
 - Login- und Sperrbildschirm mit Privos-Wallpaper.
