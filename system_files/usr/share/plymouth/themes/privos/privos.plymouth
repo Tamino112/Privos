@@ -1,0 +1,65 @@
+[Plymouth Theme]
+Name=Privos
+Description=Privos-Bootanimation: Logo mit Ladeanimation auf schwarzem Grund
+ModuleName=two-step
+
+[two-step]
+Font=Inter 12
+TitleFont=Inter Light 30
+ImageDir=/usr/share/plymouth/themes/privos
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.382
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.382
+HorizontalAlignment=.5
+VerticalAlignment=.72
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.45
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x07080d
+BackgroundEndColor=0x07080d
+ProgressBarBackgroundColor=0x2a2d3a
+ProgressBarForegroundColor=0x8b5cf6
+DialogClearsFirmwareBackground=true
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+UseFirmwareBackground=false
+
+[shutdown]
+UseEndAnimation=false
+UseFirmwareBackground=false
+
+[reboot]
+UseEndAnimation=false
+UseFirmwareBackground=false
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Updates werden installiert …
+SubTitle=Bitte den Computer nicht ausschalten
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=System wird aktualisiert …
+SubTitle=Bitte den Computer nicht ausschalten
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Firmware wird aktualisiert …
+SubTitle=Bitte den Computer nicht ausschalten
+
+[system-reset]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=System wird zurückgesetzt …
+SubTitle=Bitte den Computer nicht ausschalten

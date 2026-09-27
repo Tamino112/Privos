@@ -1,0 +1,11 @@
+label: "Privos-Live"
+grub2:
+  default: 0
+  timeout: 5
+  entries:
+    - name: "Privos starten (ausprobieren und installieren)"
+      linux: "/images/pxeboot/vmlinuz quiet rhgb root=live:CDLABEL=Privos-Live enforcing=0 rd.live.image"
+      initrd: "/images/pxeboot/initrd.img"
+    - name: "Privos starten (Grafik-Kompatibilitaetsmodus)"
+      linux: "/images/pxeboot/vmlinuz quiet rhgb root=live:CDLABEL=Privos-Live enforcing=0 rd.live.image nomodeset"
+      initrd: "/images/pxeboot/initrd.img"

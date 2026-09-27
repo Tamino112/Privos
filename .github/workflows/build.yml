@@ -6,7 +6,7 @@ on:
       - '**.md'
   pull_request:
   schedule:
-    - cron: '20 4 * * *'  # täglich: neue Treiber/Fedora-Updates übernehmen
+    - cron: '20 4 * * 1'  # wöchentlich (montags): neue Treiber/Fedora-Updates übernehmen
   workflow_dispatch:
 
 env:
@@ -28,7 +28,9 @@ jobs:
         run: |
           shellcheck build_files/*.sh \
             system_files/usr/bin/privos-gpu-check \
-            system_files/usr/libexec/privos/nvidia-flatpak-sync
+            system_files/usr/libexec/privos/nvidia-flatpak-sync \
+            installer/build.sh \
+            installer/system_files/usr/bin/privos-live-welcome
 
       - name: Python-Tests (VRAM-Wächter)
         run: python3 -m unittest discover -s tests -v
@@ -60,6 +62,7 @@ jobs:
             branch="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
             tags="br-${branch,,}"
           fi
+          echo "Tags: ${tags}"
           echo "registry=${registry}" >> "$GITHUB_OUTPUT"
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           echo "first=${tags%% *}" >> "$GITHUB_OUTPUT"
@@ -84,6 +87,11 @@ jobs:
             rpm -q kmod-nvidia nvidia-driver
             test -x /usr/bin/privos-vram-guard
             test -x /usr/bin/privos-gpu-check
+            grep -q '^ID=privos' /usr/lib/os-release
+            test "$(plymouth-set-default-theme)" = privos
+            test -f /usr/share/wallpapers/Privos/contents/images_dark/3840x2160.png
+            test -f /usr/share/color-schemes/PrivosDark.colors
+            test -f /usr/share/plasma/look-and-feel/org.privos.desktop/contents/splash/Splash.qml
             systemctl is-enabled privos-vram-guard.service
             systemctl is-enabled systemd-oomd.service
             test -z "$(ls /usr/share/vulkan/icd.d/nouveau_icd.*.json 2>/dev/null)"

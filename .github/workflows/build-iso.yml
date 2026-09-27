@@ -4,52 +4,98 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image-Tag, aus dem die ISO gebaut wird (z. B. latest oder br-<branch>)"
+        description: "Image-Tag, aus dem die ISO gebaut wird"
         required: true
         default: latest
+  # Nach jedem erfolgreichen Image-Build durch einen Push (nicht beim wöchentlichen Rebuild)
+  workflow_run:
+    workflows: ["Build Privos image"]
+    types: [completed]
 
 env:
   IMAGE_NAME: privos-nvidia
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   iso:
-    name: ISO bauen
+    name: Live-ISO bauen
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == github.event.repository.default_branch)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
     steps:
+      - name: Speicherplatz freimachen
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+        with:
+          tool-cache: true
+
+      - name: Container-Speicher auf Btrfs (komprimiert) einrichten
+        run: |
+          sudo truncate -s 110G /mnt/podman-storage.img
+          sudo mkfs.btrfs -f -m single -d single /mnt/podman-storage.img
+          sudo podman system reset --force
+          LOOP=$(sudo losetup --find --show --direct-io=on /mnt/podman-storage.img)
+          sudo mkdir -p /mnt/podman-storage
+          sudo mount -o compress-force=zstd:2,discard=async,noatime "$LOOP" /mnt/podman-storage
+          sudo mkdir -p /mnt/podman-storage/storage /mnt/podman-storage/tmp /var/lib/containers/storage
+          sudo mount --bind /mnt/podman-storage/storage /var/lib/containers/storage
+
       - uses: actions/checkout@v4
 
-      - name: Speicherplatz freimachen
-        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
-        with:
-          remove-codeql: true
-
-      - name: Installer-Konfiguration vorbereiten
-        id: prep
+      - name: Image bestimmen
+        id: ref
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}:${{ inputs.tag }}"
-          sed "s|@IMAGE@|${image}|" disk_config/iso.toml > /tmp/iso.toml
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-          echo "uid=$(id -u):$(id -g)" >> "$GITHUB_OUTPUT"
+          tag="${{ inputs.tag || 'latest' }}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}"
+          echo "image=${image}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "update=${image}:latest" >> "$GITHUB_OUTPUT"
+          echo "iso=privos-nvidia-${tag}-$(date -u +%Y%m%d)-live-amd64.iso" >> "$GITHUB_OUTPUT"
 
-      - name: ISO bauen
+      - name: Bei GHCR anmelden
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin --authfile /tmp/auth.json
+
+      - name: Live-System bauen
+        run: |
+          sudo env TMPDIR=/mnt/podman-storage/tmp podman build \
+            --authfile /tmp/auth.json \
+            --cap-add sys_admin \
+            --security-opt label=disable \
+            --secret id=registry-auth,src=/tmp/auth.json \
+            --build-arg BASE_IMAGE="${{ steps.ref.outputs.image }}" \
+            --build-arg PAYLOAD_REF="${{ steps.ref.outputs.image }}" \
+            --build-arg UPDATE_REF="${{ steps.ref.outputs.update }}" \
+            -t localhost/privos-live:latest installer/
+
+      - name: Speicherplatz anzeigen
+        if: always()
+        run: sudo df -h
+
+      - name: ISO erzeugen (Titanoboa)
         id: build
-        uses: osbuild/bootc-image-builder-action@8661cd3832544ad68c12dcde8681b13ab0f56a8d # main
+        uses: ublue-os/titanoboa@5c457c3d0518bd17e754be0fd98a60d29d26abb4
         with:
-          builder-image: quay.io/centos-bootc/bootc-image-builder:latest
-          config-file: /tmp/iso.toml
-          image: ${{ steps.prep.outputs.image }}
-          chown: ${{ steps.prep.outputs.uid }}
-          types: anaconda-iso
-          additional-args: --use-librepo=True
+          image-ref: localhost/privos-live:latest
+          iso-dest: ${{ github.workspace }}/upload/${{ steps.ref.outputs.iso }}
+
+      - name: Prüfsumme
+        run: |
+          cd upload
+          sha256sum *.iso | tee "${{ steps.ref.outputs.iso }}-CHECKSUM"
+          ls -lh
 
       - name: ISO hochladen
         uses: actions/upload-artifact@v4
         with:
-          name: privos-nvidia-${{ inputs.tag }}-iso
-          path: ${{ steps.build.outputs.output-directory }}
+          name: ${{ steps.ref.outputs.iso }}
+          path: upload/
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

@@ -1,0 +1,15 @@
+# Live-System für die Privos-ISO: das fertige Privos-Image + Live-Boot + Installer.
+# Bauen mit: podman build --cap-add sys_admin --security-opt label=disable \
+#   --secret id=registry-auth,src=<auth.json> --build-arg PAYLOAD_REF=... installer/
+
+ARG BASE_IMAGE=ghcr.io/tamino112/privos-nvidia:latest
+FROM ${BASE_IMAGE}
+
+# Image, das installiert wird (liegt fertig in der ISO, Installation klappt auch offline)
+ARG PAYLOAD_REF=ghcr.io/tamino112/privos-nvidia:latest
+# Woher das installierte System später seine Updates holt
+ARG UPDATE_REF=ghcr.io/tamino112/privos-nvidia:latest
+
+RUN --mount=type=bind,source=./,target=/src \
+    --mount=type=secret,id=registry-auth \
+    PAYLOAD_REF="${PAYLOAD_REF}" UPDATE_REF="${UPDATE_REF}" /src/build.sh

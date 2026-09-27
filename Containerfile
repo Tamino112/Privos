@@ -11,6 +11,7 @@ ARG BASE_TAG="latest"
 FROM scratch AS ctx
 COPY build_files /
 COPY system_files /system_files
+COPY branding /branding
 
 FROM ${BASE_IMAGE}:${BASE_TAG}
 

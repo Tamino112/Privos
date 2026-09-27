@@ -1,0 +1,60 @@
+#!/usr/bin/bash
+# Willkommensfenster im Privos-Live-System: ausprobieren oder installieren.
+set -uo pipefail
+
+if [[ "${LC_MESSAGES:-${LANG:-C}}" == de* ]]; then
+    TITLE="Willkommen bei Privos"
+    TEXT="<span size='x-large'><b>Willkommen bei Privos!</b></span>
+
+Du kannst Privos jetzt ausprobieren, ohne etwas an deinem PC zu ändern,
+oder es direkt installieren.
+
+<small>Hinweis: Im Live-System laufen noch nicht alle NVIDIA-Funktionen.
+Das volle System mit NVIDIA-Treiber bekommst du nach der Installation.</small>"
+    INSTALL="Privos installieren"
+    TRY="Erst ausprobieren"
+    NO_UEFI="Privos braucht einen PC, der im <b>UEFI-Modus</b> startet.
+
+Bitte im BIOS/UEFI den <b>CSM-/Legacy-Modus</b> ausschalten und neu starten."
+    LOW_RAM="Dein PC hat nur <b>%s</b> Arbeitsspeicher.
+Für Privos werden mindestens <b>8 GB</b> empfohlen – die Installation kann fehlschlagen."
+    OK="OK"
+else
+    TITLE="Welcome to Privos"
+    TEXT="<span size='x-large'><b>Welcome to Privos!</b></span>
+
+You can try Privos now without changing anything on your PC,
+or install it right away.
+
+<small>Note: not all NVIDIA features are available in the live system.
+You get the full system with the NVIDIA driver after installing.</small>"
+    INSTALL="Install Privos"
+    TRY="Try it first"
+    NO_UEFI="Privos needs a PC that boots in <b>UEFI mode</b>.
+
+Please disable <b>CSM/Legacy mode</b> in your BIOS/UEFI settings and restart."
+    LOW_RAM="Your PC only has <b>%s</b> of memory.
+At least <b>8 GB</b> is recommended – the installation may fail."
+    OK="OK"
+fi
+
+if [[ ! -d /sys/firmware/efi ]]; then
+    yad --title="Privos" --window-icon=privos-logo --image=dialog-warning \
+        --text="${NO_UEFI}" --button="${OK}:0" --buttons-layout=center --on-top || true
+fi
+
+mem_kb="$(awk '/^MemTotal/ {print $2}' /proc/meminfo)"
+if (( mem_kb > 0 && mem_kb < 7500000 )); then
+    mem_human="$(numfmt --from-unit=1024 --to=iec --suffix=B "${mem_kb}")"
+    # shellcheck disable=SC2059
+    yad --title="Privos" --window-icon=privos-logo --image=dialog-warning \
+        --text="$(printf "${LOW_RAM}" "${mem_human}")" --button="${OK}:0" \
+        --buttons-layout=center --on-top || true
+fi
+
+if yad --title="${TITLE}" --window-icon=privos-logo --image=privos-logo \
+    --text="${TEXT}" --text-align=center --buttons-layout=center --on-top --fixed \
+    --button="${TRY}:1" --button="${INSTALL}:0"; then
+    liveinst &
+    disown
+fi

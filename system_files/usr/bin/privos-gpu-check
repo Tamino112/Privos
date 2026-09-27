@@ -44,7 +44,7 @@ else
     if mokutil --sb-state 2>/dev/null | grep -q enabled; then
         hint "Secure Boot ist an – vermutlich wurde der Signaturschlüssel noch nicht registriert:"
         for cert in /etc/pki/akmods/certs/*.der; do
-            [[ -e "${cert}" ]] && hint "sudo mokutil --import ${cert}   (Passwort: universalblue), dann neu starten"
+            [[ -e "${cert}" ]] && hint "sudo mokutil --import ${cert}   (ein Einmal-Passwort festlegen), dann neu starten"
         done
     fi
 fi

@@ -79,13 +79,14 @@ journalctl -u privos-vram-guard   # Log des VRAM-Wächters
 
 ## Secure Boot
 
-Die Treibermodule sind mit dem Universal-Blue-Schlüssel signiert. Bei aktivem Secure Boot
-muss der Schlüssel einmalig registriert werden:
+Die Treibermodule sind signiert. Der Privos-Installer registriert den Schlüssel automatisch.
+Beim ersten Neustart nach der Installation erscheint ein blauer MOK-Bildschirm. Dort wählst du
+„Enroll MOK“ → „Continue“ → „Yes“, gibst das Passwort **`privos`** ein und startest neu.
+
+Manuell geht es so:
 
 ```bash
-sudo mokutil --import /etc/pki/akmods/certs/akmods-ublue.der   # Passwort: universalblue
+sudo mokutil --import /etc/pki/akmods/certs/akmods-ublue.der   # ein Einmal-Passwort festlegen
 ```
 
-Beim nächsten Neustart erscheint ein blauer MOK-Bildschirm. Dort wählst du
-„Enroll MOK“ → „Continue“ → „Yes“, gibst das Passwort ein und startest neu.
 `privos-gpu-check` zeigt den genauen Befehl an, falls der Treiber nicht lädt.
