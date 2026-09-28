@@ -142,6 +142,23 @@ Festplatte zuletzt noch nicht installiert; für die Live-Vorschau ist ihre
 - In einer **installierten** VM lassen sich Benutzerdateien und GNOME-
   Einstellungen direkt ändern. Die Live-VM vergisst solche Änderungen beim
   Herunterfahren.
+- Änderungen unter `system_files/` ohne Build sofort in der installierten VM
+  prüfen: In der VM einmal `sudo systemctl enable --now sshd` ausführen, dann
+  auf dem Windows-PC
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-sync.ps1 -VmHost <IP-der-VM> -User <Benutzer>`.
+  Das Skript macht `/usr` per `bootc usr-overlay` vorübergehend beschreibbar,
+  kopiert `system_files/` hinein und lädt dconf, GSettings-Schemas und systemd
+  neu. Nach einem Neustart der VM gilt wieder das installierte Image.
+- Auf dem zweiten PC (selbst eine Proxmox-VM ohne verschachtelte
+  Virtualisierung) läuft Privos als eigene Proxmox-VM 110 „test“; die Konsole
+  ist über die Proxmox-Weboberfläche erreichbar. Die dort installierte VM
+  verfolgt nach der Installation `ghcr.io/tamino112/privos-nvidia:br-codex-privos-identity`
+  (Stand 28.09.2026, `rpm-ostree status`). Für den Standardbranch einmal
+  `sudo bootc switch ghcr.io/tamino112/privos-nvidia:latest` ausführen; danach
+  holt `sudo bootc upgrade` neue Images dieses Tags.
+- Die installierte VM nutzt die Tastaturbelegung, die im Installer gewählt
+  wurde (Standard: `us`). In der Proxmox-Konsole liegen Sonderzeichen dann
+  anders als auf einer deutschen Tastatur.
 - Änderungen am `Containerfile`, unter `system_files/` oder an Systempaketen
   erscheinen nicht automatisch in einer vorhandenen ISO. Dafür ein neues
   OS-Image veröffentlichen und in der installierten VM `sudo bootc upgrade`
