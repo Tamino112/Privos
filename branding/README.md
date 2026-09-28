@@ -13,7 +13,7 @@ Das Zeichen entstand als Formstudie mit ImageGen. Die produktive Fassung ist als
 | `privos-wordmark-inverse.svg` | Wortmarke auf dunklem Hintergrund |
 | `privos-wallpaper-default.png` | Vom Nutzer ausgewählter ImageGen-Hintergrund; Standard für Desktop und Sperrbildschirm |
 | `privos-wallpaper-dark.png`, `privos-wallpaper-light.png` | Weitere ImageGen-Varianten, im Image enthalten |
-| `make-boot-spinner.py` | Erzeugt 36 transparente Frames für den Plymouth-Bootspinner (Donut-Ring im Windows-11-Stil) |
+| `make-boot-assets.py` | Erzeugt Hintergrund, Lichthof, Ladelinie, Update-Fortschritt und Passwortfeld für das Plymouth-Skript-Theme |
 | `preview.svg` | Übersicht für die visuelle Abnahme; wird nicht ins System installiert |
 | `concepts/privos-mark-imagegen.png` | ImageGen-Formstudie; wird nicht ins System installiert |
 
@@ -23,6 +23,8 @@ Das Zeichen entstand als Formstudie mit ImageGen. Die produktive Fassung ist als
 
 Das Zeichen braucht rundherum freie Fläche. Für 16 bis 24 px die ungekachelte oder symbolische Version verwenden. Die Kachel ist für größere Flächen gedacht. Farben und Grundform nicht pro Anwendung verändern.
 
-`build_files/15-branding.sh` installiert die Varianten und erzeugt PNG-Größen für das Icon-Theme. Die Boot-Variante ersetzt das Plymouth-Wasserzeichen; die Spinner-Frames ersetzen dort den Fedora-Lader. GNOME nutzt den ausgewählten ImageGen-Hintergrund in hellem und dunklem Modus als Standard. Eine neue ISO enthält diese Änderungen erst, nachdem System-Image und ISO neu gebaut wurden.
+`build_files/15-branding.sh` installiert die Varianten und erzeugt PNG-Größen für das Icon-Theme.
+
+**Bootanimation:** Plymouth nutzt das Skript-Plugin mit `system_files/usr/share/plymouth/themes/privos/privos.script`. Auf fast schwarzem Grund (`#05090D`) liegt ein weiches Petrol-Leuchten; das helle Zeichen gleitet beim Start ein, dahinter atmet ein Lichthof. Statt eines Drehrads zeigt eine schmale Ladelinie einen gleitenden Abschnitt. Bei Updates wird daraus ein Fortschrittsbalken mit Text, eine Passwortabfrage erscheint als abgerundetes Feld. Alle Bilder erzeugt `make-boot-assets.py` für 1080 px Höhe; das Skript skaliert sie beim Start auf die Bildschirmhöhe, breitere Bildschirme werden nahtlos mit der Grundfarbe aufgefüllt. `docs/mockups/boot-mockup.html` spielt die Animation mit denselben Bildern im Browser ab, ohne Image- oder ISO-Build. GNOME nutzt den ausgewählten ImageGen-Hintergrund in hellem und dunklem Modus als Standard. Eine neue ISO enthält diese Änderungen erst, nachdem System-Image und ISO neu gebaut wurden.
 
 Der Startknopf nutzt das bestehende Privos-Zeichen. ArcMenu zeigt dazu ein kompaktes App-Menü und reagiert auf die Super-Taste. Das ImageGen-Symbol `privos-software.png` ersetzt das GNOME-Software-Symbol; der Systemakzent ist Petrol/Teal. Prompt für das Symbol: „Ein einzelnes modernes App-Icon auf transparentem Grund, tief petrolblaue abgerundete Kachel, klare helle Einkaufstasche mit offenem Durchgang im Negativraum, bei 24 px lesbar, ohne Text oder Glanz.“

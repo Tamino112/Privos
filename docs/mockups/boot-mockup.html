@@ -1,19 +1,116 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privos Bootanimation</title>
+<!--
+  Vorschau der Plymouth-Bootanimation ohne Image- oder ISO-Build.
+  Spielt die Logik aus system_files/usr/share/plymouth/themes/privos/privos.script
+  mit den echten Bildern nach. Bilder neu erzeugen:
+      python3 branding/make-boot-assets.py docs/mockups/boot-assets
+-->
 <style>
-  html,body { margin:0; width:800px; height:450px; overflow:hidden; }
-  body { background:#0C171B; position:relative;
-         font-family:Inter,"Segoe UI",sans-serif; }
-  .logo { position:absolute; left:50%; top:45%; width:96px; height:96px;
-          transform:translate(-50%,-50%); }
-  .spin { position:absolute; left:50%; top:63%; transform:translate(-50%,-50%);
-          width:40px; height:40px; }
+  html, body { margin: 0; height: 100%; background: #05090D; overflow: hidden;
+               font-family: Inter, "Segoe UI", sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .controls { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px;
+              opacity: .25; transition: opacity .2s; }
+  .controls:hover { opacity: 1; }
+  .controls button { font: 12px Inter, "Segoe UI", sans-serif; color: #EFF5F6;
+                     background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+                     border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .controls button[aria-pressed="true"] { background: #176778; border-color: #4CA7B7; }
 </style>
 </head>
 <body>
-  <img class="logo" src="../../branding/privos-logo-boot.svg">
-  <img class="spin" src="boot-frames/throbber-0010.png">
+<canvas id="screen"></canvas>
+<div class="controls">
+  <button data-mode="boot" aria-pressed="true">Start</button>
+  <button data-mode="password">Passwort</button>
+  <button data-mode="update">Update</button>
+  <button data-mode="restart">Neu abspielen</button>
+</div>
+<script>
+const FPS = 50, BAR_FRAMES = 75, PROGRESS_STEPS = 50;
+const dir = 'boot-assets/';
+const load = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+let mode = 'boot', ticks = 0, assets;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+async function init() {
+  const [bg, halo, logo, entry, bullet] = await Promise.all(
+    ['background.png', 'halo.png'].map(f => load(dir + f)).concat([
+      load('../../branding/privos-logo-boot.svg'), load(dir + 'entry.png'), load(dir + 'bullet.png')]));
+  const bars = await Promise.all([...Array(BAR_FRAMES).keys()].map(i => load(`${dir}bar-${i}.png`)));
+  const progress = await Promise.all([...Array(PROGRESS_STEPS + 1).keys()].map(i => load(`${dir}progress-${i}.png`)));
+  assets = { bg, halo, logo, entry, bullet, bars, progress };
+  setInterval(frame, 1000 / FPS);
+}
+
+function frame() {
+  ticks++;
+  const W = canvas.width = innerWidth * devicePixelRatio;
+  const H = canvas.height = innerHeight * devicePixelRatio;
+  const unit = H / 1080, s = ticks / FPS, cx = W / 2, logoY = H * 0.44;
+  const a = assets;
+  ctx.fillStyle = '#05090D'; ctx.fillRect(0, 0, W, H);
+  const bgW = Math.round(a.bg.width * unit);
+  ctx.drawImage(a.bg, Math.floor((W - bgW) / 2), 0, bgW, H);
+
+  const breath = 0.5 - 0.5 * Math.cos(s * 2 * Math.PI / 4);
+  const halo = Math.round(480 * unit);
+  ctx.globalAlpha = smooth(0.2, 1.2, s) * (0.45 + 0.55 * breath);
+  ctx.drawImage(a.halo, Math.floor(cx - halo / 2), Math.floor(logoY - halo / 2), halo, halo);
+
+  const logoH = Math.round(96 * unit), appear = smooth(0, 0.7, s);
+  ctx.globalAlpha = appear;
+  ctx.drawImage(a.logo, Math.floor(cx - logoH / 2), Math.floor(logoY - logoH / 2 + (1 - appear) * 14 * unit), logoH, logoH);
+
+  const barW = Math.round(180 * unit), barH = Math.max(2, Math.round(3 * unit));
+  const barX = Math.floor(cx - barW / 2), barY = Math.floor(logoY + logoH / 2 + 72 * unit);
+  ctx.globalAlpha = 1;
+  if (mode === 'password') {
+    const ew = Math.round(260 * unit), eh = Math.round(38 * unit);
+    const ey = Math.floor(logoY + logoH / 2 + 92 * unit);
+    ctx.drawImage(a.entry, Math.floor(cx - ew / 2), ey, ew, eh);
+    text('Passwort für nvme0n1p3 eingeben', cx, ey - 12 * unit, 12, 0.8, 'bottom');
+    const n = 1 + Math.floor(s * 2.5) % 9, b = Math.max(4, Math.round(9 * unit)), step = b * 1.8;
+    const start = cx - (n * step - (step - b)) / 2;
+    for (let i = 0; i < n; i++) ctx.drawImage(a.bullet, Math.floor(start + i * step), Math.floor(ey + (eh - b) / 2), b, b);
+    return;
+  }
+  ctx.globalAlpha = smooth(0.5, 1.1, s);
+  if (mode === 'update') {
+    const p = clamp((s - 0.5) / 12, 0, 1);
+    ctx.drawImage(a.progress[Math.round(p * PROGRESS_STEPS)], barX, barY, barW, barH);
+    ctx.globalAlpha = 1;
+    text('System wird aktualisiert …', cx, barY + 34 * unit, 15, 1, 'top');
+    text('Bitte den Computer nicht ausschalten', cx, barY + 64 * unit, 11, 0.55, 'top');
+  } else {
+    ctx.drawImage(a.bars[ticks % BAR_FRAMES], barX, barY, barW, barH);
+  }
+  ctx.globalAlpha = 1;
+
+  function text(t, x, y, pt, alpha, base) {
+    ctx.globalAlpha = alpha; ctx.fillStyle = '#F5F7F5'; ctx.textAlign = 'center'; ctx.textBaseline = base;
+    ctx.font = `${Math.round(pt * 1.333 * unit)}px Inter, "Segoe UI", sans-serif`;
+    ctx.fillText(t, x, y); ctx.globalAlpha = 1;
+  }
+}
+
+document.querySelectorAll('.controls button').forEach(btn => btn.onclick = () => {
+  if (btn.dataset.mode !== 'restart') {
+    mode = btn.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', b === btn));
+  }
+  ticks = 0;
+});
+init();
+</script>
 </body>
 </html>

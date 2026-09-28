@@ -1,65 +1,8 @@
 [Plymouth Theme]
 Name=Privos
-Description=Privos-Bootanimation: helles Zeichen und Ringbogen-Spinner auf dunklem Grund
-ModuleName=two-step
+Description=Privos-Bootanimation: helles Zeichen mit Lichthof und gleitender Ladelinie auf dunklem Petrol-Grund
+ModuleName=script
 
-[two-step]
-Font=Inter 12
-TitleFont=Inter Light 30
+[script]
 ImageDir=/usr/share/plymouth/themes/privos
-DialogHorizontalAlignment=.5
-DialogVerticalAlignment=.382
-TitleHorizontalAlignment=.5
-TitleVerticalAlignment=.382
-HorizontalAlignment=.5
-VerticalAlignment=.61
-WatermarkHorizontalAlignment=.5
-WatermarkVerticalAlignment=.45
-Transition=none
-TransitionDuration=0.0
-BackgroundStartColor=0x0c171b
-BackgroundEndColor=0x0c171b
-ProgressBarBackgroundColor=0x244047
-ProgressBarForegroundColor=0x4ca7b7
-DialogClearsFirmwareBackground=true
-MessageBelowAnimation=true
-
-[boot-up]
-UseEndAnimation=false
-UseFirmwareBackground=false
-
-[shutdown]
-UseEndAnimation=false
-UseFirmwareBackground=false
-
-[reboot]
-UseEndAnimation=false
-UseFirmwareBackground=false
-
-[updates]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=Updates werden installiert …
-SubTitle=Bitte den Computer nicht ausschalten
-
-[system-upgrade]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=System wird aktualisiert …
-SubTitle=Bitte den Computer nicht ausschalten
-
-[firmware-upgrade]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=Firmware wird aktualisiert …
-SubTitle=Bitte den Computer nicht ausschalten
-
-[system-reset]
-SuppressMessages=true
-ProgressBarShowPercentComplete=true
-UseProgressBar=true
-Title=System wird zurückgesetzt …
-SubTitle=Bitte den Computer nicht ausschalten
+ScriptFile=/usr/share/plymouth/themes/privos/privos.script

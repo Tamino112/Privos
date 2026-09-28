@@ -91,9 +91,12 @@ glib-compile-schemas /usr/share/glib-2.0/schemas
 dconf update
 
 # --- Boot-Animation (Plymouth) ---------------------------------------------------------
+# Skript-Theme: Hintergrund, Lichthof und Ladelinie aus make-boot-assets.py; das Zeichen
+# in mehreren Größen, damit Plymouth beim Skalieren keine Treppenkanten erzeugt.
+dnf5 install -y plymouth-plugin-script
 THEME=/usr/share/plymouth/themes/privos
-find /usr/share/plymouth/themes/spinner -name '*.png' ! -name 'watermark.png' -exec cp -t "${THEME}" {} +
-rm -f "${THEME}"/throbber-*.png
-python3 "${BRANDING}/make-boot-spinner.py" "${THEME}"
-render "${BRANDING}/privos-logo-boot.svg" 128 128 "${THEME}/watermark.png"
+python3 "${BRANDING}/make-boot-assets.py" "${THEME}"
+for size in 64 96 144 192; do
+    render "${BRANDING}/privos-logo-boot.svg" "${size}" "${size}" "${THEME}/logo-${size}.png"
+done
 sed -i 's/^Theme=.*/Theme=privos/' /usr/share/plymouth/plymouthd.defaults
